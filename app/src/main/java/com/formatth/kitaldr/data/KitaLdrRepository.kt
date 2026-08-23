@@ -3,10 +3,10 @@ package com.formatth.kitaldr.data
 import android.content.Context
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.SetOptions
 import java.util.UUID
 import kotlin.random.Random
 
@@ -42,7 +42,18 @@ class KitaLdrRepository(context: Context) {
             .addOnSuccessListener { result ->
                 ensureUserDocument(result.user!!.uid, firestore, onResult)
             }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+            .addOnFailureListener { error ->
+                onResult(Result.failure(formatAuthError(error)))
+            }
+    }
+
+    private fun formatAuthError(error: Exception): IllegalStateException {
+        val detail = if (error is FirebaseAuthException) {
+            "FirebaseAuthException code=${error.errorCode}; message=${error.message ?: "unknown"}"
+        } else {
+            "${error::class.java.simpleName}; message=${error.message ?: "unknown"}"
+        }
+        return IllegalStateException(detail, error)
     }
 
     private fun ensureUserDocument(
@@ -105,10 +116,6 @@ class KitaLdrRepository(context: Context) {
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
-    /**
-     * Watches a code created by this device. When the other device accepts it,
-     * this device claims the resulting coupleId on its own user document.
-     */
     fun listenForPairingAcceptance(code: String, onAccepted: (String) -> Unit): ListenerRegistration? {
         val firestore = db ?: return null
         val uid = currentUid() ?: return null
@@ -129,11 +136,6 @@ class KitaLdrRepository(context: Context) {
             }
     }
 
-    /**
-     * Consumes a pending code and creates the couple atomically.
-     * The Firestore rules also verify that the code consumption and couple
-     * creation happen together, so the client cannot fake a successful pair.
-     */
     fun joinPairingCode(codeInput: String, onResult: (Result<String>) -> Unit) {
         val uid = currentUid()
         val firestore = db
@@ -157,28 +159,18 @@ class KitaLdrRepository(context: Context) {
             val codeSnapshot = transaction.get(codeRef)
             val userSnapshot = transaction.get(userRef)
 
-            if (!codeSnapshot.exists()) {
-                throw IllegalStateException("Pairing code not found.")
-            }
-            if (codeSnapshot.getString("status") != "pending") {
-                throw IllegalStateException("Pairing code has already been used.")
-            }
+            if (!codeSnapshot.exists()) throw IllegalStateException("Pairing code not found.")
+            if (codeSnapshot.getString("status") != "pending") throw IllegalStateException("Pairing code has already been used.")
 
             val expiresAt = codeSnapshot.getTimestamp("expiresAt")
                 ?: throw IllegalStateException("Pairing code is invalid.")
-            if (expiresAt.toDate().time <= System.currentTimeMillis()) {
-                throw IllegalStateException("Pairing code has expired.")
-            }
+            if (expiresAt.toDate().time <= System.currentTimeMillis()) throw IllegalStateException("Pairing code has expired.")
 
-            if (userSnapshot.getString("pairId") != null) {
-                throw IllegalStateException("This device already has a partner.")
-            }
+            if (userSnapshot.getString("pairId") != null) throw IllegalStateException("This device already has a partner.")
 
             val creatorUid = codeSnapshot.getString("creatorUid")
                 ?: throw IllegalStateException("Pairing code is invalid.")
-            if (creatorUid == uid) {
-                throw IllegalStateException("You cannot pair with your own code.")
-            }
+            if (creatorUid == uid) throw IllegalStateException("You cannot pair with your own code.")
 
             transaction.set(
                 coupleRef,
@@ -190,22 +182,8 @@ class KitaLdrRepository(context: Context) {
                     "createdAt" to FieldValue.serverTimestamp(),
                 )
             )
-            transaction.update(
-                userRef,
-                mapOf(
-                    "pairId" to coupleId,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-            )
-            transaction.update(
-                codeRef,
-                mapOf(
-                    "status" to "accepted",
-                    "acceptedBy" to uid,
-                    "coupleId" to coupleId,
-                )
-            )
-
+            transaction.update(userRef, mapOf("pairId" to coupleId, "updatedAt" to FieldValue.serverTimestamp()))
+            transaction.update(codeRef, mapOf("status" to "accepted", "acceptedBy" to uid, "coupleId" to coupleId))
             coupleId
         }
             .addOnSuccessListener { onResult(Result.success(it)) }
@@ -230,13 +208,7 @@ class KitaLdrRepository(context: Context) {
                 }
 
                 firestore.runTransaction { transaction ->
-                    transaction.update(
-                        userRef,
-                        mapOf(
-                            "pairId" to null,
-                            "updatedAt" to FieldValue.serverTimestamp(),
-                        )
-                    )
+                    transaction.update(userRef, mapOf("pairId" to null, "updatedAt" to FieldValue.serverTimestamp()))
                     val coupleRef = firestore.collection("couples").document(coupleId)
                     val coupleSnapshot = transaction.get(coupleRef)
                     if (coupleSnapshot.exists() && coupleSnapshot.getString("status") == "active") {
@@ -314,17 +286,13 @@ class KitaLdrRepository(context: Context) {
 
     private fun generatePairCode(): String {
         val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-        val raw = buildString {
-            repeat(8) { append(alphabet[Random.nextInt(alphabet.length)]) }
-        }
+        val raw = buildString { repeat(8) { append(alphabet[Random.nextInt(alphabet.length)]) } }
         return "${raw.substring(0, 4)}-${raw.substring(4)}"
     }
 
     companion object {
         private val PAIR_CODE_REGEX = Regex("^[A-Z2-9]{4}-[A-Z2-9]{4}$")
-
-        fun normalizeCode(value: String): String =
-            value.trim().uppercase().filter { it.isLetterOrDigit() || it == '-' }
+        fun normalizeCode(value: String): String = value.trim().uppercase().filter { it.isLetterOrDigit() || it == '-' }
     }
 }
 
