@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,7 +70,9 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         message = error.message ?: "Something went wrong."
     }
 
-    if (firebaseReady && repository.currentUid() == null) {
+    LaunchedEffect(firebaseReady) {
+        if (!firebaseReady || repository.currentUid() != null) return@LaunchedEffect
+        busy = true
         repository.signIn { result ->
             result.onSuccess {
                 busy = false
@@ -84,7 +87,6 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
                 message = error.message ?: "Firebase sign-in failed."
             }
         }
-        busy = true
     }
 
     when (screen) {
@@ -214,9 +216,7 @@ private fun WelcomeScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(22.dp))
-        StatusPill(
-            text = if (firebaseReady) "🟢 Firebase ready" else "🟡 Firebase setup needed",
-        )
+        StatusPill(if (firebaseReady) "🟢 Firebase ready" else "🟡 Firebase setup needed")
         Spacer(Modifier.height(22.dp))
         Button(
             onClick = onStart,
