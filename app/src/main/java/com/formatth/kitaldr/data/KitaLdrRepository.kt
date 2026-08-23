@@ -7,6 +7,8 @@ import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.UUID
 import kotlin.random.Random
 
@@ -52,13 +54,78 @@ class KitaLdrRepository(context: Context) {
                 }
             }
             .addOnFailureListener { error ->
-                onResult(Result.failure(formatAuthError(error)))
+                // Also probe the exact Identity Toolkit endpoint. This tells us
+                // whether the API key itself is rejected or the SDK is failing
+                // in another Firebase layer.
+                diagnoseAuthEndpoint { diagnosticResult ->
+                    val sdkDetail = generateErrorDetail(error)
+                    diagnosticResult.onSuccess { diagnostic ->
+                        onResult(Result.failure(IllegalStateException(
+                            "$sdkDetail | REST auth probe: HTTP ${diagnostic.httpStatus}; ${diagnostic.response}"
+                        )))
+                    }.onFailure { probeError ->
+                        onResult(Result.failure(IllegalStateException(
+                            "$sdkDetail | REST auth probe failed: ${probeError.message ?: "unknown"}"
+                        )))
+                    }
+                }
             }
     }
 
-    private fun formatAuthError(error: Exception): IllegalStateException {
-        val root = generateErrorDetail(error)
-        return IllegalStateException(root, error)
+    /**
+     * Development diagnostic for the same Identity Toolkit endpoint used by
+     * anonymous account creation. The API key is never returned to the UI.
+     */
+    fun diagnoseAuthEndpoint(onResult: (Result<AuthEndpointDiagnostic>) -> Unit) {
+        val firebaseApp = app
+        if (firebaseApp == null) {
+            onResult(Result.failure(IllegalStateException("Firebase app is not initialized.")))
+            return
+        }
+
+        val apiKey = firebaseApp.options.apiKey
+        if (apiKey.isNullOrBlank()) {
+            onResult(Result.failure(IllegalStateException("Firebase API key is missing.")))
+            return
+        }
+
+        Thread {
+            try {
+                val endpoint = URL("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$apiKey")
+                val connection = (endpoint.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                }
+
+                connection.outputStream.use { output ->
+                    output.write("{\"returnSecureToken\":true}".toByteArray(Charsets.UTF_8))
+                }
+
+                val status = connection.responseCode
+                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+                val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val sanitized = sanitizeAuthResponse(body)
+                connection.disconnect()
+
+                onResult(Result.success(AuthEndpointDiagnostic(status, sanitized)))
+            } catch (error: Exception) {
+                onResult(Result.failure(IllegalStateException(
+                    "${error::class.java.simpleName}: ${error.message ?: "unknown"}", error
+                )))
+            }
+        }.start()
+    }
+
+    private fun sanitizeAuthResponse(body: String): String {
+        if (body.isBlank()) return "empty response"
+        return body
+            .replace(Regex("\\\"idToken\\\"\\s*:\\s*\\\"[^\\\"]*\\\""), "\"idToken\":\"hidden\"")
+            .replace(Regex("\\\"refreshToken\\\"\\s*:\\s*\\\"[^\\\"]*\\\""), "\"refreshToken\":\"hidden\"")
+            .replace(Regex("\\\"localId\\\"\\s*:\\s*\\\"[^\\\"]*\\\""), "\"localId\":\"hidden\"")
+            .take(600)
     }
 
     private fun generateErrorDetail(error: Throwable): String {
@@ -271,4 +338,9 @@ data class PairInfo(
     val partnerUid: String,
     val partnerName: String,
     val status: String,
+)
+
+data class AuthEndpointDiagnostic(
+    val httpStatus: Int,
+    val response: String,
 )
