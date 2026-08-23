@@ -29,6 +29,29 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Inject Firebase API key
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          key = os.environ.get("FIREBASE_API_KEY", "").strip()
+          if not key:
+              raise SystemExit("FIREBASE_API_KEY GitHub Actions secret is not configured")
+
+          path = Path("app/google-services.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          clients = data.get("client", [])
+          if not clients or not clients[0].get("api_key"):
+              raise SystemExit("No Firebase Android API key entry found in google-services.json")
+
+          clients[0]["api_key"][0]["current_key"] = key
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
