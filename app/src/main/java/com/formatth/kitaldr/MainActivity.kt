@@ -94,6 +94,9 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
             firebaseReady = firebaseReady,
             busy = busy,
             message = message,
+            projectId = repository.firebaseProjectId,
+            applicationId = repository.firebaseApplicationId,
+            apiKeyConfigured = repository.firebaseApiKeyConfigured,
             onStart = {
                 if (!repository.isConfigured) {
                     firebaseReady = false
@@ -198,6 +201,9 @@ private fun WelcomeScreen(
     firebaseReady: Boolean,
     busy: Boolean,
     message: String,
+    projectId: String?,
+    applicationId: String?,
+    apiKeyConfigured: Boolean,
     onStart: () -> Unit,
 ) {
     Column(
@@ -216,7 +222,17 @@ private fun WelcomeScreen(
         )
         Spacer(Modifier.height(22.dp))
         StatusPill(if (firebaseReady) "🟢 Firebase ready" else "🟡 Firebase setup needed")
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(14.dp))
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Firebase diagnostic", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                DiagnosticRow("Project", projectId ?: "not detected")
+                DiagnosticRow("App ID", applicationId ?: "not detected")
+                DiagnosticRow("API key", if (apiKeyConfigured) "detected (hidden)" else "missing")
+            }
+        }
+        Spacer(Modifier.height(18.dp))
         Button(
             onClick = onStart,
             enabled = !busy,
@@ -237,6 +253,14 @@ private fun WelcomeScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
