@@ -97,6 +97,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
             projectId = repository.firebaseProjectId,
             applicationId = repository.firebaseApplicationId,
             apiKeyConfigured = repository.firebaseApiKeyConfigured,
+            apiKeySuffix = repository.firebaseApiKeySuffix,
             onStart = {
                 if (!repository.isConfigured) {
                     firebaseReady = false
@@ -204,6 +205,7 @@ private fun WelcomeScreen(
     projectId: String?,
     applicationId: String?,
     apiKeyConfigured: Boolean,
+    apiKeySuffix: String,
     onStart: () -> Unit,
 ) {
     Column(
@@ -215,11 +217,7 @@ private fun WelcomeScreen(
         Spacer(Modifier.height(20.dp))
         Text("KitaLDR", fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Text(
-            "A tiny private space for two people who are far apart.",
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("A tiny private space for two people who are far apart.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(22.dp))
         StatusPill(if (firebaseReady) "🟢 Firebase ready" else "🟡 Firebase setup needed")
         Spacer(Modifier.height(14.dp))
@@ -230,29 +228,19 @@ private fun WelcomeScreen(
                 DiagnosticRow("Project", projectId ?: "not detected")
                 DiagnosticRow("App ID", applicationId ?: "not detected")
                 DiagnosticRow("API key", if (apiKeyConfigured) "detected (hidden)" else "missing")
+                DiagnosticRow("Key suffix", apiKeySuffix)
             }
         }
         Spacer(Modifier.height(18.dp))
-        Button(
-            onClick = onStart,
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Text("Connect with your person ❤️")
+        Button(onClick = onStart, enabled = !busy, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Connect with your person ❤️")
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
             Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
-        Text(
-            "Real Firebase pairing • short-lived codes • one active partner",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
+        Text("Real Firebase pairing • short-lived codes • one active partner", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
 
@@ -265,82 +253,37 @@ private fun DiagnosticRow(label: String, value: String) {
 }
 
 @Composable
-private fun PairingScreen(
-    firebaseReady: Boolean,
-    busy: Boolean,
-    message: String,
-    generatedCode: String,
-    joinCode: String,
-    onJoinCodeChange: (String) -> Unit,
-    onGenerate: () -> Unit,
-    onPair: () -> Unit,
-    onBack: () -> Unit,
-) {
+private fun PairingScreen(firebaseReady: Boolean, busy: Boolean, message: String, generatedCode: String, joinCode: String, onJoinCodeChange: (String) -> Unit, onGenerate: () -> Unit, onPair: () -> Unit, onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Text("Connect", fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text(
-            if (firebaseReady) "Pair directly with one person. Your code expires after 10 minutes."
-            else "Firebase belum siap.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(if (firebaseReady) "Pair directly with one person. Your code expires after 10 minutes." else "Firebase belum siap.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
             Column(modifier = Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Create a pairing code", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    if (generatedCode.isBlank()) "---- ----" else generatedCode,
-                    fontSize = 29.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp
-                )
+                Text(if (generatedCode.isBlank()) "---- ----" else generatedCode, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Share this code privately with your partner.",
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Share this code privately with your partner.", fontSize = 12.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = onGenerate, enabled = firebaseReady && !busy) {
-                    Text("Generate new code")
-                }
+                Button(onClick = onGenerate, enabled = firebaseReady && !busy) { Text("Generate new code") }
             }
         }
         Spacer(Modifier.height(22.dp))
         Text("Or enter your partner's code", fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = joinCode,
-            onValueChange = onJoinCodeChange,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = firebaseReady && !busy,
-            singleLine = true,
-            placeholder = { Text("ABCD-2345") }
-        )
+        OutlinedTextField(value = joinCode, onValueChange = onJoinCodeChange, modifier = Modifier.fillMaxWidth(), enabled = firebaseReady && !busy, singleLine = true, placeholder = { Text("ABCD-2345") })
         Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onPair,
-            enabled = firebaseReady && !busy && joinCode.length == 9,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Text("Pair this device ❤️")
+        Button(onClick = onPair, enabled = firebaseReady && !busy && joinCode.length == 9, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Pair this device ❤️")
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
             Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-            Text("Back")
-        }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
@@ -372,15 +315,9 @@ private fun HomeScreen(pairInfo: PairInfo?, onDisconnect: () -> Unit, busy: Bool
             ActionButton("🍚", "Eat", Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
-        Text(
-            "Remote actions come next. Pairing is now real Firebase data.",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("Remote actions come next. Pairing is now real Firebase data.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-            Text("Disconnect partner")
-        }
+        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
     }
 }
 
