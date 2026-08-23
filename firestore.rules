@@ -23,6 +23,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['displayName', 'pairId', 'createdAt', 'updatedAt'])
         && request.resource.data.pairId == null;
 
+      // getAfter() is required here because pairing creates the couple and
+      // updates this user document in the same Firestore transaction.
       allow update: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -30,11 +32,8 @@ service cloud.firestore {
         && (
           request.resource.data.pairId == null
           || (
-            exists(couplePath(request.resource.data.pairId))
-            && (
-              get(couplePath(request.resource.data.pairId)).data.memberA == uid
-              || get(couplePath(request.resource.data.pairId)).data.memberB == uid
-            )
+            getAfter(couplePath(request.resource.data.pairId)).data.memberA == uid
+            || getAfter(couplePath(request.resource.data.pairId)).data.memberB == uid
           )
         );
 
