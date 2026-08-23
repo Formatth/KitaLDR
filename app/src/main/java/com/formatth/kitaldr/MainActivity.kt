@@ -98,21 +98,21 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
                 if (!repository.isConfigured) {
                     firebaseReady = false
                     message = "Firebase belum terhubung. Tambahkan google-services.json terlebih dahulu."
-                    return@WelcomeScreen
-                }
-                busy = true
-                message = ""
-                repository.signIn { result ->
-                    result.onSuccess {
-                        busy = false
-                        screen = Screen.Pairing
-                        repository.loadCurrentPair { pairResult ->
-                            pairResult.onSuccess { pair ->
-                                pairInfo = pair
-                                if (pair != null && pair.status == "active") screen = Screen.Home
-                            }.onFailure(::showError)
-                        }
-                    }.onFailure(::showError)
+                } else {
+                    busy = true
+                    message = ""
+                    repository.signIn { result ->
+                        result.onSuccess {
+                            busy = false
+                            screen = Screen.Pairing
+                            repository.loadCurrentPair { pairResult ->
+                                pairResult.onSuccess { pair ->
+                                    pairInfo = pair
+                                    if (pair != null && pair.status == "active") screen = Screen.Home
+                                }.onFailure(::showError)
+                            }
+                        }.onFailure(::showError)
+                    }
                 }
             }
         )
@@ -175,7 +175,6 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         )
     }
 
-    // The creator's device waits for the other device to consume its code.
     if (generatedCode.isNotBlank()) {
         DisposableEffect(generatedCode) {
             val registration = repository.listenForPairingAcceptance(generatedCode) { coupleId ->
@@ -262,7 +261,6 @@ private fun PairingScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(20.dp))
-
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(26.dp),
@@ -290,7 +288,6 @@ private fun PairingScreen(
                 }
             }
         }
-
         Spacer(Modifier.height(22.dp))
         Text("Or enter your partner's code", fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
@@ -312,12 +309,10 @@ private fun PairingScreen(
             if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             else Text("Pair this device ❤️")
         }
-
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
             Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
         }
-
         Spacer(Modifier.weight(1f))
         OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
             Text("Back")
@@ -326,11 +321,7 @@ private fun PairingScreen(
 }
 
 @Composable
-private fun HomeScreen(
-    pairInfo: PairInfo?,
-    onDisconnect: () -> Unit,
-    busy: Boolean,
-) {
+private fun HomeScreen(pairInfo: PairInfo?, onDisconnect: () -> Unit, busy: Boolean) {
     val partnerName = pairInfo?.partnerName ?: "My Love"
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Text("KitaLDR", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -339,7 +330,6 @@ private fun HomeScreen(
         Spacer(Modifier.height(4.dp))
         Text("Connected with $partnerName", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
-
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("❤️ $partnerName", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -348,7 +338,6 @@ private fun HomeScreen(
             }
         }
         Spacer(Modifier.height(20.dp))
-
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton("📳", "Poke", Modifier.weight(1f))
             ActionButton("🥺", "Miss You", Modifier.weight(1f))
@@ -373,21 +362,13 @@ private fun HomeScreen(
 
 @Composable
 private fun StatusPill(text: String) {
-    Text(
-        text,
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-        fontSize = 12.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
 private fun ActionButton(icon: String, label: String, modifier: Modifier) {
     Card(modifier = modifier, shape = RoundedCornerShape(20.dp)) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(icon, fontSize = 32.sp)
             Spacer(Modifier.height(6.dp))
             Text(label, fontWeight = FontWeight.SemiBold)
