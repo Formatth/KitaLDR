@@ -13,54 +13,85 @@ object PushTokenRegistrar {
     private const val TAG = "FCMTokenManager"
 
     fun ensureTokenRegistered() {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        Log.d(TAG, "=== FCM TOKEN REGISTRATION START ===")
+
+        val app = try {
+            FirebaseApp.getInstance()
+        } catch (error: Exception) {
+            Log.e(TAG, "FirebaseApp.getInstance() failed", error)
+            return
+        }
+
+        Log.d(TAG, "FirebaseApp ready: projectId=${app.options.projectId}")
+
+        val uid = try {
+            FirebaseAuth.getInstance(app).currentUser?.uid
+        } catch (error: Exception) {
+            Log.e(TAG, "FirebaseAuth initialization failed", error)
+            return
+        }
+
         if (uid.isNullOrBlank()) {
             Log.w(TAG, "User belum login — skip register token")
             return
         }
 
-        Log.d(TAG, "Starting FCM token registration for uid=$uid")
+        Log.d(TAG, "Authenticated uid=$uid")
 
-        // Avoid FirebaseMessaging.getInstance() here because the current
-        // Kotlin/Firebase Messaging combination can resolve the package-
-        // private FirebaseApp overload. Obtain the component from the
-        // default FirebaseApp instead.
-        val messaging = FirebaseApp.getInstance().get(FirebaseMessaging::class.java)
+        val messaging = try {
+            // Use the FirebaseApp component API. This avoids the Kotlin overload
+            // resolution problem encountered with FirebaseMessaging.getInstance().
+            app.get(FirebaseMessaging::class.java)
+        } catch (error: Exception) {
+            Log.e(TAG, "FirebaseMessaging component initialization failed", error)
+            return
+        }
 
-        messaging.token
-            .addOnCompleteListener { task ->
-                if (!task.isSuccessful) {
-                    Log.e(TAG, "Gagal ambil FCM token", task.exception)
-                    return@addOnCompleteListener
-                }
+        if (messaging == null) {
+            Log.e(TAG, "FirebaseMessaging component returned null")
+            return
+        }
 
-                val token = task.result
-                if (token.isNullOrBlank()) {
-                    Log.w(TAG, "Token null/blank")
-                    return@addOnCompleteListener
-                }
+        Log.d(TAG, "FirebaseMessaging component ready; requesting FCM token...")
 
-                Log.d(TAG, "FCM token didapat: ${token.take(20)}...")
-
-                val tokenRef = FirebaseFirestore.getInstance()
-                    .collection("deviceTokens")
-                    .document(uid)
-
-                val data = mapOf(
-                    "token" to token,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-
-                Log.d(TAG, "Saving token to deviceTokens/$uid")
-
-                tokenRef.set(data, SetOptions.merge())
-                    .addOnSuccessListener {
-                        Log.d(TAG, "Token berhasil disimpan ke deviceTokens/$uid")
+        try {
+            messaging.token
+                .addOnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        Log.e(TAG, "Gagal ambil FCM token", task.exception)
+                        return@addOnCompleteListener
                     }
-                    .addOnFailureListener { error ->
-                        Log.e(TAG, "Gagal simpan token ke Firestore", error)
+
+                    val token = task.result
+                    if (token.isNullOrBlank()) {
+                        Log.w(TAG, "FCM token null/blank")
+                        return@addOnCompleteListener
                     }
-            }
+
+                    Log.d(TAG, "FCM token didapat: ${token.take(20)}...")
+
+                    val tokenRef = FirebaseFirestore.getInstance(app)
+                        .collection("deviceTokens")
+                        .document(uid)
+
+                    val data = mapOf(
+                        "token" to token,
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                    )
+
+                    Log.d(TAG, "Saving token to deviceTokens/$uid")
+
+                    tokenRef.set(data, SetOptions.merge())
+                        .addOnSuccessListener {
+                            Log.d(TAG, "=== TOKEN SAVED: deviceTokens/$uid ===")
+                        }
+                        .addOnFailureListener { error ->
+                            Log.e(TAG, "Gagal simpan token ke Firestore", error)
+                        }
+                }
+        } catch (error: Exception) {
+            Log.e(TAG, "Exception while requesting FCM token", error)
+        }
     }
 
     // Compatibility entry point for the existing repository flow.
