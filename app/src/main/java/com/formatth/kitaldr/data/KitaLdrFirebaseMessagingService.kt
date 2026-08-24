@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.formatth.kitaldr.MainActivity
 import com.google.firebase.FirebaseApp
@@ -36,14 +37,27 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
 
     private fun saveToken(token: String) {
         val app = FirebaseApp.getApps(this).firstOrNull() ?: return
-        val uid = FirebaseAuth.getInstance(app).currentUser?.uid ?: return
+        val uid = FirebaseAuth.getInstance(app).currentUser?.uid
+        if (uid.isNullOrBlank()) {
+            Log.w(TAG, "Received a new FCM token before Firebase auth was ready")
+            return
+        }
+
         FirebaseFirestore.getInstance(app)
             .collection("deviceTokens")
             .document(uid)
-            .set(mapOf(
-                "token" to token,
-                "updatedAt" to FieldValue.serverTimestamp(),
-            ))
+            .set(
+                mapOf(
+                    "token" to token,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                )
+            )
+            .addOnSuccessListener {
+                Log.d(TAG, "FCM token refreshed for uid=$uid")
+            }
+            .addOnFailureListener { error ->
+                Log.e(TAG, "Failed to save refreshed FCM token for uid=$uid", error)
+            }
     }
 
     private fun showActionNotification(title: String, body: String) {
@@ -87,6 +101,7 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
+        private const val TAG = "KitaLDR-FCM"
         const val CHANNEL_ID = "kitaldr_actions"
     }
 }
