@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.formatth.kitaldr.data.KitaLdrRepository
 import com.formatth.kitaldr.data.PairInfo
+import com.formatth.kitaldr.data.PushTokenRegistrar
 import com.formatth.kitaldr.data.RemoteAction
 import com.formatth.kitaldr.data.RemoteActionService
 import kotlinx.coroutines.delay
@@ -102,6 +103,11 @@ private fun KitaLdrApp(
     }
 
     fun openAfterSignIn() {
+        // This is the explicit authenticated-user entry point for FCM token
+        // registration. Keep it here so token registration is not hidden inside
+        // the repository flow and can be traced from app startup/login.
+        PushTokenRegistrar.ensureTokenRegistered()
+
         repository.loadCurrentPair { result ->
             result.onSuccess { pair ->
                 pairInfo = pair
