@@ -95,6 +95,21 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Each authenticated device may register only its own FCM token.
+    // The backend reads these documents with Admin SDK when sending pushes.
+    match /deviceTokens/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if false;
+
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0;
+
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     match /pairingCodes/{code} {
       allow get: if signedIn()
         && (
@@ -163,11 +178,7 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // ==========================================================
-      // REALTIME ACTIONS
-      // ==========================================================
       match /actions/{actionId} {
-        // Receiver can listen to only their own incoming actions.
         allow list: if signedIn()
           && isCoupleMember(coupleId);
 
@@ -175,8 +186,6 @@ service cloud.firestore {
           && isCoupleMember(coupleId)
           && resource.data.recipientUid == request.auth.uid;
 
-        // A member can send an action only to the other member of
-        // the same active couple.
         allow create: if signedIn()
           && get(couplePath(coupleId)).data.status == 'active'
           && isCoupleMember(coupleId)
@@ -192,7 +201,6 @@ service cloud.firestore {
           )
           && request.resource.data.type == 'POKE';
 
-        // Only the intended receiver may consume an action.
         allow delete: if signedIn()
           && isCoupleMember(coupleId)
           && resource.data.recipientUid == request.auth.uid;
