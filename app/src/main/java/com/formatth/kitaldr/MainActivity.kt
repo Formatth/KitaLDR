@@ -60,8 +60,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repository = KitaLdrRepository(this)
         setContent {
-            KitaLdrTheme {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     KitaLdrApp(repository)
                 }
             }
@@ -246,7 +249,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
 @Composable
 private fun WelcomeScreen(firebaseReady: Boolean, busy: Boolean, message: String, onStart: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -281,16 +284,16 @@ private fun PairChoiceScreen(busy: Boolean, onCreate: () -> Unit, onJoin: () -> 
         Spacer(Modifier.height(16.dp))
         ChoiceCard("🔗", "Join a pair", "Enter the pairing code your person shared.", onJoin, !busy)
         Spacer(Modifier.weight(1f))
-        Text("One person creates the code. The other person joins it.\nNo second code is needed.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Text("One person creates the code. The other person joins it.\nNo second code is needed.", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         Spacer(Modifier.height(14.dp))
-        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
 @Composable
 private fun ChoiceCard(emoji: String, title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean) {
     Card(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
@@ -341,21 +344,21 @@ private fun CreatePairScreen(busy: Boolean, message: String, generatedCode: Stri
                 }
                 Spacer(Modifier.height(22.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { copyToClipboard(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, Modifier.weight(1f)) { Text("Copy") }
-                    Button(onClick = { shareCode(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, Modifier.weight(1f)) { Text("Share") }
+                    OutlinedButton(onClick = { copyToClipboard(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, modifier = Modifier.weight(1f)) { Text("Copy") }
+                    Button(onClick = { shareCode(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, modifier = Modifier.weight(1f)) { Text("Share") }
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onGenerate, enabled = !busy && (generatedCode.isBlank() || expired), Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
+        Button(onClick = onGenerate, enabled = !busy && (generatedCode.isBlank() || expired), modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
             if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (generatedCode.isBlank()) "Generate pairing code" else "Generate new code")
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            Text(message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            Text(message, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
@@ -370,21 +373,21 @@ private fun JoinPairScreen(busy: Boolean, message: String, joinCode: String, onJ
             Column(Modifier.fillMaxWidth().padding(22.dp)) {
                 Text("Partner's pairing code", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = joinCode, onValueChange = onJoinCodeChange, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true, placeholder = { Text("ABCD-2345") })
+                OutlinedTextField(value = joinCode, onValueChange = onJoinCodeChange, modifier = Modifier.fillMaxWidth(), enabled = !busy, singleLine = true, placeholder = { Text("ABCD-2345") })
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = onPair, enabled = !busy && joinCode.length == 9, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
+                Button(onClick = onPair, enabled = !busy && joinCode.length == 9, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
                     if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Join this pair ❤️", fontWeight = FontWeight.Bold)
                 }
             }
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
-            Text(message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            Text(message, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Spacer(Modifier.height(18.dp))
-        Text("The code is short-lived and can only be used once.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        Text("The code is short-lived and can only be used once.", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
@@ -418,13 +421,13 @@ private fun HomeScreen(pairInfo: PairInfo?, busy: Boolean, onDisconnect: () -> U
         Spacer(Modifier.height(12.dp))
         Text("Pairing is live on Firebase. Remote actions will be added next.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onDisconnect, Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
+        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
     }
 }
 
 @Composable
 private fun StatusPill(text: String) {
-    Text(text, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
