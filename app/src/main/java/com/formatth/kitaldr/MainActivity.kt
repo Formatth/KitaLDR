@@ -1,9 +1,12 @@
 package com.formatth.kitaldr
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -80,6 +83,7 @@ private fun KitaLdrApp(
     repository: KitaLdrRepository,
     actionService: RemoteActionService,
 ) {
+    val context = LocalContext.current
     var screen by rememberSaveable { mutableStateOf(Screen.Welcome) }
     var firebaseReady by rememberSaveable { mutableStateOf(repository.isConfigured) }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -108,6 +112,15 @@ private fun KitaLdrApp(
     }
 
     LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            (context as? ComponentActivity)?.requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                9001
+            )
+        }
+
         if (!firebaseReady) return@LaunchedEffect
         if (repository.currentUid() != null) {
             openAfterSignIn()
