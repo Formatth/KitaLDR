@@ -30,6 +30,9 @@ class KitaLdrRepository(context: Context) {
     val firebaseApiKeyConfigured: Boolean
         get() = !app?.options?.apiKey.isNullOrBlank()
 
+    val firebaseApiKeySuffix: String
+        get() = app?.options?.apiKey?.takeLast(6)?.let { "...$it" } ?: "missing"
+
     fun signIn(onResult: (Result<String>) -> Unit) {
         val firebaseAuth = auth
         val firestore = db
@@ -54,9 +57,6 @@ class KitaLdrRepository(context: Context) {
                 }
             }
             .addOnFailureListener { error ->
-                // Also probe the exact Identity Toolkit endpoint. This tells us
-                // whether the API key itself is rejected or the SDK is failing
-                // in another Firebase layer.
                 diagnoseAuthEndpoint { diagnosticResult ->
                     val sdkDetail = generateErrorDetail(error)
                     diagnosticResult.onSuccess { diagnostic ->
@@ -72,10 +72,7 @@ class KitaLdrRepository(context: Context) {
             }
     }
 
-    /**
-     * Development diagnostic for the same Identity Toolkit endpoint used by
-     * anonymous account creation. The API key is never returned to the UI.
-     */
+    /** Development diagnostic for the same Identity Toolkit endpoint used by anonymous account creation. */
     fun diagnoseAuthEndpoint(onResult: (Result<AuthEndpointDiagnostic>) -> Unit) {
         val firebaseApp = app
         if (firebaseApp == null) {
@@ -176,21 +173,41 @@ class KitaLdrRepository(context: Context) {
             onResult(Result.failure(IllegalStateException("Not signed in to Firebase.")))
             return
         }
+
         val userRef = firestore.collection("users").document(uid)
-        userRef.get().addOnSuccessListener { user ->
-            if (user.getString("pairId") != null) {
-                onResult(Result.failure(IllegalStateException("This device already has a partner.")))
-                return@addOnSuccessListener
+        val code = generatePairCode()
+        val codeRef = firestore.collection("pairingCodes").document(code)
+
+        firestore.runTransaction { transaction ->
+            val user = transaction.get(userRef)
+            val existingPairId = user.getString("pairId")
+
+            if (existingPairId != null) {
+                val coupleRef = firestore.collection("couples").document(existingPairId)
+                val couple = transaction.get(coupleRef)
+                val status = couple.getString("status")
+
+                if (status != "disconnected") {
+                    throw IllegalStateException("This device already has a partner.")
+                }
+
+                // Recover stale local state left by an older build.
+                transaction.update(userRef, mapOf(
+                    "pairId" to null,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                ))
             }
-            val code = generatePairCode()
-            firestore.collection("pairingCodes").document(code).set(mapOf(
+
+            transaction.set(codeRef, mapOf(
                 "creatorUid" to uid,
                 "status" to "pending",
                 "expiresAt" to com.google.firebase.Timestamp(System.currentTimeMillis() / 1000 + 600, 0),
                 "createdAt" to FieldValue.serverTimestamp(),
-            )).addOnSuccessListener { onResult(Result.success(code)) }
-                .addOnFailureListener { onResult(Result.failure(it)) }
-        }.addOnFailureListener { onResult(Result.failure(it)) }
+            ))
+
+            code
+        }.addOnSuccessListener { onResult(Result.success(it)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
     fun listenForPairingAcceptance(code: String, onAccepted: (String) -> Unit): ListenerRegistration? {
@@ -219,10 +236,12 @@ class KitaLdrRepository(context: Context) {
             onResult(Result.failure(IllegalArgumentException("Invalid pairing code.")))
             return
         }
+
         val codeRef = firestore.collection("pairingCodes").document(code)
         val userRef = firestore.collection("users").document(uid)
         val coupleId = UUID.randomUUID().toString()
         val coupleRef = firestore.collection("couples").document(coupleId)
+
         firestore.runTransaction { transaction ->
             val codeSnapshot = transaction.get(codeRef)
             val userSnapshot = transaction.get(userRef)
@@ -233,6 +252,7 @@ class KitaLdrRepository(context: Context) {
             if (userSnapshot.getString("pairId") != null) throw IllegalStateException("This device already has a partner.")
             val creatorUid = codeSnapshot.getString("creatorUid") ?: throw IllegalStateException("Pairing code is invalid.")
             if (creatorUid == uid) throw IllegalStateException("You cannot pair with your own code.")
+
             transaction.set(coupleRef, mapOf(
                 "memberA" to creatorUid,
                 "memberB" to uid,
@@ -247,6 +267,10 @@ class KitaLdrRepository(context: Context) {
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
+    /**
+     * Disconnect the relationship for both members in one transaction.
+     * This prevents the other device from retaining a stale pairId.
+     */
     fun disconnect(onResult: (Result<Unit>) -> Unit) {
         val uid = currentUid()
         val firestore = db
@@ -254,24 +278,54 @@ class KitaLdrRepository(context: Context) {
             onResult(Result.failure(IllegalStateException("Not signed in to Firebase.")))
             return
         }
+
         val userRef = firestore.collection("users").document(uid)
-        userRef.get().addOnSuccessListener { snapshot ->
-            val coupleId = snapshot.getString("pairId")
-            if (coupleId == null) {
-                onResult(Result.success(Unit))
-                return@addOnSuccessListener
+
+        firestore.runTransaction { transaction ->
+            val userSnapshot = transaction.get(userRef)
+            val coupleId = userSnapshot.getString("pairId")
+
+            if (coupleId == null) return@runTransaction Unit
+
+            val coupleRef = firestore.collection("couples").document(coupleId)
+            val coupleSnapshot = transaction.get(coupleRef)
+            if (!coupleSnapshot.exists()) {
+                transaction.update(userRef, mapOf(
+                    "pairId" to null,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                ))
+                return@runTransaction Unit
             }
-            firestore.runTransaction { transaction ->
-                transaction.update(userRef, mapOf("pairId" to null, "updatedAt" to FieldValue.serverTimestamp()))
-                val coupleRef = firestore.collection("couples").document(coupleId)
-                val coupleSnapshot = transaction.get(coupleRef)
-                if (coupleSnapshot.exists() && coupleSnapshot.getString("status") == "active") {
-                    transaction.update(coupleRef, "status", "disconnected")
-                }
-                null
-            }.addOnSuccessListener { onResult(Result.success(Unit)) }
-                .addOnFailureListener { onResult(Result.failure(it)) }
-        }.addOnFailureListener { onResult(Result.failure(it)) }
+
+            val memberA = coupleSnapshot.getString("memberA")
+            val memberB = coupleSnapshot.getString("memberB")
+            if (memberA != uid && memberB != uid) {
+                throw IllegalStateException("You are not a member of this couple.")
+            }
+
+            val partnerUid = if (memberA == uid) memberB else memberA
+            if (partnerUid == null || partnerUid == uid) {
+                throw IllegalStateException("Couple data is invalid.")
+            }
+
+            val partnerRef = firestore.collection("users").document(partnerUid)
+            transaction.get(partnerRef)
+
+            transaction.update(userRef, mapOf(
+                "pairId" to null,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ))
+            transaction.update(partnerRef, mapOf(
+                "pairId" to null,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ))
+            if (coupleSnapshot.getString("status") == "active") {
+                transaction.update(coupleRef, "status", "disconnected")
+            }
+
+            Unit
+        }.addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
     fun loadCurrentPair(onResult: (Result<PairInfo?>) -> Unit) {
@@ -281,13 +335,36 @@ class KitaLdrRepository(context: Context) {
             onResult(Result.failure(IllegalStateException("Not signed in to Firebase.")))
             return
         }
-        firestore.collection("users").document(uid).get().addOnSuccessListener { user ->
+
+        val userRef = firestore.collection("users").document(uid)
+        userRef.get().addOnSuccessListener { user ->
             val pairId = user.getString("pairId")
             if (pairId == null) {
                 onResult(Result.success(null))
                 return@addOnSuccessListener
             }
+
             firestore.collection("couples").document(pairId).get().addOnSuccessListener { couple ->
+                if (!couple.exists()) {
+                    userRef.update(mapOf(
+                        "pairId" to null,
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                    )).addOnSuccessListener { onResult(Result.success(null)) }
+                        .addOnFailureListener { onResult(Result.failure(it)) }
+                    return@addOnSuccessListener
+                }
+
+                val status = couple.getString("status") ?: "active"
+                if (status != "active") {
+                    // Clear stale pair state so this device can generate a new code.
+                    userRef.update(mapOf(
+                        "pairId" to null,
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                    )).addOnSuccessListener { onResult(Result.success(null)) }
+                        .addOnFailureListener { onResult(Result.failure(it)) }
+                    return@addOnSuccessListener
+                }
+
                 val memberA = couple.getString("memberA")
                 val memberB = couple.getString("memberB")
                 val partnerUid = if (memberA == uid) memberB else memberA
@@ -295,12 +372,13 @@ class KitaLdrRepository(context: Context) {
                     onResult(Result.failure(IllegalStateException("Couple data is invalid.")))
                     return@addOnSuccessListener
                 }
+
                 firestore.collection("users").document(partnerUid).get().addOnSuccessListener { partner ->
                     onResult(Result.success(PairInfo(
                         coupleId = pairId,
                         partnerUid = partnerUid,
                         partnerName = partner.getString("displayName") ?: "My Love",
-                        status = couple.getString("status") ?: "active",
+                        status = status,
                     )))
                 }.addOnFailureListener { onResult(Result.failure(it)) }
             }.addOnFailureListener { onResult(Result.failure(it)) }
