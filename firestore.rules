@@ -10,24 +10,43 @@ service cloud.firestore {
       return /databases/$(database)/documents/couples/$(coupleId);
     }
 
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
     match /users/{uid} {
       // A user may always read their own profile.
       //
-      // After pairing, the app also needs the partner's displayName.
-      // That read is allowed only when both the requested user and the
-      // signed-in user belong to the same active couple.
+      // A paired user may read their partner's profile only when the
+      // signed-in user's own pairId points to an active couple containing
+      // both users. We intentionally use the signed-in user's pairId here
+      // instead of requiring the partner's pairId to already be populated.
+      // This avoids a race immediately after the joining transaction, where
+      // member B is paired before member A's acceptance listener updates A.
       allow get: if signedIn() && (
         request.auth.uid == uid
         || (
-          resource.data.pairId is string
-          && get(couplePath(resource.data.pairId)).data.status == 'active'
+          get(userPath(request.auth.uid)).data.pairId is string
+          && get(couplePath(
+            get(userPath(request.auth.uid)).data.pairId
+          )).data.status == 'active'
           && (
-            get(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
-            || get(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
+            get(couplePath(
+              get(userPath(request.auth.uid)).data.pairId
+            )).data.memberA == request.auth.uid
+            ||
+            get(couplePath(
+              get(userPath(request.auth.uid)).data.pairId
+            )).data.memberB == request.auth.uid
           )
           && (
-            get(couplePath(resource.data.pairId)).data.memberA == uid
-            || get(couplePath(resource.data.pairId)).data.memberB == uid
+            get(couplePath(
+              get(userPath(request.auth.uid)).data.pairId
+            )).data.memberA == uid
+            ||
+            get(couplePath(
+              get(userPath(request.auth.uid)).data.pairId
+            )).data.memberB == uid
           )
         )
       );
@@ -95,7 +114,7 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.auth.uid == request.resource.data.creatorUid
-        && code.matches(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+        && code.matches('^[A-Z2-9]{4}-[A-Z2-9]{4}$')
         && request.resource.data.keys().hasOnly([
           'creatorUid', 'status', 'expiresAt', 'createdAt'
         ])
