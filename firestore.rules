@@ -11,7 +11,27 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if signedIn() && request.auth.uid == uid;
+      // A user may always read their own profile.
+      //
+      // After pairing, the app also needs the partner's displayName.
+      // That read is allowed only when both the requested user and the
+      // signed-in user belong to the same active couple.
+      allow get: if signedIn() && (
+        request.auth.uid == uid
+        || (
+          resource.data.pairId is string
+          && get(couplePath(resource.data.pairId)).data.status == 'active'
+          && (
+            get(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
+            || get(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
+          )
+          && (
+            get(couplePath(resource.data.pairId)).data.memberA == uid
+            || get(couplePath(resource.data.pairId)).data.memberB == uid
+          )
+        )
+      );
+
       allow list: if false;
 
       allow create: if signedIn()
