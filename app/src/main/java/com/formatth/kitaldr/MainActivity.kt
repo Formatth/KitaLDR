@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.formatth.kitaldr.data.KitaLdrRepository
 import com.formatth.kitaldr.data.PairInfo
+import com.formatth.kitaldr.data.RemoteAction
+import com.formatth.kitaldr.data.RemoteActionService
 import kotlinx.coroutines.delay
 
 private enum class Screen { Welcome, PairChoice, CreatePair, JoinPair, Home }
@@ -59,13 +61,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = KitaLdrRepository(this)
+        val actionService = RemoteActionService(this)
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    KitaLdrApp(repository)
+                    KitaLdrApp(repository, actionService)
                 }
             }
         }
@@ -73,7 +76,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun KitaLdrApp(repository: KitaLdrRepository) {
+private fun KitaLdrApp(
+    repository: KitaLdrRepository,
+    actionService: RemoteActionService,
+) {
     var screen by rememberSaveable { mutableStateOf(Screen.Welcome) }
     var firebaseReady by rememberSaveable { mutableStateOf(repository.isConfigured) }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -82,9 +88,12 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
     var generatedAt by rememberSaveable { mutableStateOf(0L) }
     var joinCode by rememberSaveable { mutableStateOf("") }
     var pairInfo by remember { mutableStateOf<PairInfo?>(null) }
+    var actionBusy by remember { mutableStateOf(false) }
+    var incomingAction by remember { mutableStateOf<RemoteAction?>(null) }
 
     fun showError(error: Throwable) {
         busy = false
+        actionBusy = false
         message = error.message ?: "Something went wrong."
     }
 
@@ -191,6 +200,23 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         Screen.Home -> HomeScreen(
             pairInfo = pairInfo,
             busy = busy,
+            actionBusy = actionBusy,
+            incomingAction = incomingAction,
+            onAction = { type ->
+                val coupleId = pairInfo?.coupleId ?: return@HomeScreen
+                actionBusy = true
+                message = ""
+                actionService.sendAction(coupleId, type) { result ->
+                    result.onSuccess {
+                        actionBusy = false
+                        message = "Poke sent ❤️"
+                    }.onFailure {
+                        actionBusy = false
+                        message = it.message ?: "Could not send action."
+                    }
+                }
+            },
+            onDismissAction = { incomingAction = null },
             onDisconnect = {
                 busy = true
                 message = ""
@@ -201,6 +227,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
                         generatedCode = ""
                         generatedAt = 0L
                         joinCode = ""
+                        incomingAction = null
                         screen = Screen.PairChoice
                     }.onFailure(::showError)
                 }
@@ -208,19 +235,26 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         )
     }
 
-    // Both devices listen to the shared couple document. When either side
-    // disconnects, the other side immediately leaves the Home screen too.
     val activeCoupleId = pairInfo?.coupleId
     if (activeCoupleId != null) {
         DisposableEffect(activeCoupleId) {
             val registration = repository.listenForCoupleStatus(activeCoupleId) {
                 busy = false
+                actionBusy = false
                 pairInfo = null
                 generatedCode = ""
                 generatedAt = 0L
                 joinCode = ""
+                incomingAction = null
                 message = "Your pair was disconnected."
                 screen = Screen.PairChoice
+            }
+            onDispose { registration?.remove() }
+        }
+
+        DisposableEffect(activeCoupleId) {
+            val registration = actionService.listenForActions(activeCoupleId) { action ->
+                incomingAction = action
             }
             onDispose { registration?.remove() }
         }
@@ -392,7 +426,15 @@ private fun JoinPairScreen(busy: Boolean, message: String, joinCode: String, onJ
 }
 
 @Composable
-private fun HomeScreen(pairInfo: PairInfo?, busy: Boolean, onDisconnect: () -> Unit) {
+private fun HomeScreen(
+    pairInfo: PairInfo?,
+    busy: Boolean,
+    actionBusy: Boolean,
+    incomingAction: RemoteAction?,
+    onAction: (String) -> Unit,
+    onDismissAction: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
     val partnerName = pairInfo?.partnerName ?: "My Love"
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("KitaLDR", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -401,6 +443,7 @@ private fun HomeScreen(pairInfo: PairInfo?, busy: Boolean, onDisconnect: () -> U
         Spacer(Modifier.height(4.dp))
         Text("Connected with $partnerName", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
+
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
             Column(Modifier.padding(22.dp)) {
                 Text("❤️ $partnerName", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -408,22 +451,62 @@ private fun HomeScreen(pairInfo: PairInfo?, busy: Boolean, onDisconnect: () -> U
                 StatusPill("🟢 Pair active")
             }
         }
+
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("📳", "Poke", Modifier.weight(1f))
-            ActionButton("🥺", "Miss You", Modifier.weight(1f))
+            ActionButton("📳", "Poke", Modifier.weight(1f), enabled = !actionBusy, onClick = { onAction(RemoteActionService.ACTION_POKE) })
+            ActionButton("🥺", "Miss You", Modifier.weight(1f), enabled = false, onClick = {})
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("😴", "Wake Up", Modifier.weight(1f))
-            ActionButton("🍚", "Eat", Modifier.weight(1f))
+            ActionButton("😴", "Wake Up", Modifier.weight(1f), enabled = false, onClick = {})
+            ActionButton("🍚", "Eat", Modifier.weight(1f), enabled = false, onClick = {})
         }
-        Spacer(Modifier.height(12.dp))
-        Text("Pairing is live on Firebase. Remote actions will be added next.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        if (actionBusy) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Sending poke…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        if (messageForAction(incomingAction).isNotBlank()) {
+            Spacer(Modifier.height(16.dp))
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("📳", fontSize = 48.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("$partnerName poked you!", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(14.dp))
+                    Button(onClick = onDismissAction, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                        Text("Got it ❤️")
+                    }
+                }
+            }
+        }
+
+        if (messageForAction(incomingAction).isBlank()) {
+            Spacer(Modifier.height(12.dp))
+        }
+
+        Text(
+            "Poke is live now. More remote actions will be enabled next.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
+        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy && !actionBusy) { Text("Disconnect partner") }
     }
 }
+
+private fun messageForAction(action: RemoteAction?): String =
+    if (action?.type == RemoteActionService.ACTION_POKE) "POKE" else ""
 
 @Composable
 private fun StatusPill(text: String) {
@@ -431,8 +514,14 @@ private fun StatusPill(text: String) {
 }
 
 @Composable
-private fun ActionButton(icon: String, label: String, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(20.dp)) {
+private fun ActionButton(icon: String, label: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
         Column(Modifier.fillMaxWidth().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(icon, fontSize = 32.sp)
             Spacer(Modifier.height(6.dp))
