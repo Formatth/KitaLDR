@@ -18,7 +18,7 @@ object PushTokenRegistrar {
 
         Log.d(TAG, "Starting FCM token registration for uid=$uid")
 
-        FirebaseMessaging.getInstance(app).token
+        FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
                 if (token.isNullOrBlank()) {
                     Log.w(TAG, "FCM returned an empty token for uid=$uid")
