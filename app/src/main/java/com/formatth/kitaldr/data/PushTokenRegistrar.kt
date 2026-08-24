@@ -26,7 +26,14 @@ object PushTokenRegistrar {
 
         Log.d(TAG, "FCM_REG_START uid=$uid")
 
-        FirebaseMessaging.getInstance().token
+        // Do not call FirebaseMessaging.getInstance() here. With the current
+        // Firebase Messaging SDK/Kotlin compiler combination, Kotlin can
+        // resolve the package-private getInstance(FirebaseApp) overload.
+        // FirebaseApp.get(Class) is the supported way to obtain the component
+        // belonging to this FirebaseApp instance.
+        val messaging = app.get(FirebaseMessaging::class.java)
+
+        messaging.token
             .addOnCompleteListener { task ->
                 if (!task.isSuccessful) {
                     Log.e(TAG, "FCM_REG_TOKEN_FAILED uid=$uid", task.exception)
