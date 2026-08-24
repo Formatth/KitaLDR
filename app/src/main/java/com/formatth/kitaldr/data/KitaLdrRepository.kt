@@ -119,7 +119,7 @@ class KitaLdrRepository(context: Context) {
         val ref = firestore.collection("users").document(uid)
         ref.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
-                PushTokenRegistrar.register(app, uid)
+                PushTokenRegistrar.ensureTokenRegistered()
                 onResult(Result.success(uid))
             } else {
                 ref.set(mapOf(
@@ -128,7 +128,7 @@ class KitaLdrRepository(context: Context) {
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp(),
                 )).addOnSuccessListener {
-                    PushTokenRegistrar.register(app, uid)
+                    PushTokenRegistrar.ensureTokenRegistered()
                     onResult(Result.success(uid))
                 }.addOnFailureListener { onResult(Result.failure(it)) }
             }
