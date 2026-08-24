@@ -201,18 +201,21 @@ private fun KitaLdrApp(
             pairInfo = pairInfo,
             busy = busy,
             actionBusy = actionBusy,
+            message = message,
             incomingAction = incomingAction,
             onAction = { type ->
-                val coupleId = pairInfo?.coupleId ?: return@HomeScreen
-                actionBusy = true
-                message = ""
-                actionService.sendAction(coupleId, type) { result ->
-                    result.onSuccess {
-                        actionBusy = false
-                        message = "Poke sent ❤️"
-                    }.onFailure {
-                        actionBusy = false
-                        message = it.message ?: "Could not send action."
+                val coupleId = pairInfo?.coupleId
+                if (coupleId != null) {
+                    actionBusy = true
+                    message = ""
+                    actionService.sendAction(coupleId, type) { result ->
+                        result.onSuccess {
+                            actionBusy = false
+                            message = "Poke sent ❤️"
+                        }.onFailure {
+                            actionBusy = false
+                            message = it.message ?: "Could not send action."
+                        }
                     }
                 }
             },
@@ -430,6 +433,7 @@ private fun HomeScreen(
     pairInfo: PairInfo?,
     busy: Boolean,
     actionBusy: Boolean,
+    message: String,
     incomingAction: RemoteAction?,
     onAction: (String) -> Unit,
     onDismissAction: () -> Unit,
@@ -472,7 +476,12 @@ private fun HomeScreen(
             }
         }
 
-        if (messageForAction(incomingAction).isNotBlank()) {
+        if (message.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(message, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (incomingAction?.type == RemoteActionService.ACTION_POKE) {
             Spacer(Modifier.height(16.dp))
             Card(
                 Modifier.fillMaxWidth(),
@@ -491,22 +500,12 @@ private fun HomeScreen(
             }
         }
 
-        if (messageForAction(incomingAction).isBlank()) {
-            Spacer(Modifier.height(12.dp))
-        }
-
-        Text(
-            "Poke is live now. More remote actions will be enabled next.",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Spacer(Modifier.height(12.dp))
+        Text("Poke is live now. More remote actions will be enabled next.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
         OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy && !actionBusy) { Text("Disconnect partner") }
     }
 }
-
-private fun messageForAction(action: RemoteAction?): String =
-    if (action?.type == RemoteActionService.ACTION_POKE) "POKE" else ""
 
 @Composable
 private fun StatusPill(text: String) {
