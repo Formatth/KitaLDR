@@ -11,16 +11,21 @@ object PushTokenRegistrar {
     private const val TAG = "KitaLDR-FCM"
 
     fun register(app: FirebaseApp?, uid: String) {
-        if (app == null || uid.isBlank()) return
+        if (app == null || uid.isBlank()) {
+            Log.w(TAG, "Token registration skipped: Firebase app or uid missing")
+            return
+        }
 
-        // FirebaseMessaging exposes the public singleton accessor without arguments.
-        // The FirebaseApp overload is package-private in the current Messaging SDK.
+        Log.d(TAG, "Starting FCM token registration for uid=$uid")
+
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
                 if (token.isNullOrBlank()) {
                     Log.w(TAG, "FCM returned an empty token for uid=$uid")
                     return@addOnSuccessListener
                 }
+
+                Log.d(TAG, "FCM token obtained for uid=$uid; saving to deviceTokens/$uid")
 
                 FirebaseFirestore.getInstance(app)
                     .collection("deviceTokens")
@@ -32,7 +37,7 @@ object PushTokenRegistrar {
                         )
                     )
                     .addOnSuccessListener {
-                        Log.d(TAG, "FCM token registered for uid=$uid")
+                        Log.d(TAG, "FCM token registered successfully for uid=$uid")
                     }
                     .addOnFailureListener { error ->
                         Log.e(TAG, "Failed to save FCM token for uid=$uid", error)
