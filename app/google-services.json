@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1063636962529",
+    "project_id": "kitaldr-37bbc",
+    "storage_bucket": "kitaldr-37bbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1063636962529:android:40ada23f8217f925637ba0",
+        "android_client_info": {
+          "package_name": "com.formatth.kitaldr"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZ6PS4Cj5iErcCj5VkCdJMYAhpIgTg_m8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
