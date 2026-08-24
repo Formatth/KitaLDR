@@ -20,11 +20,14 @@ import com.google.firebase.messaging.RemoteMessage
 class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        Log.d(TAG, "onNewToken received")
         saveToken(token)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+        Log.d(TAG, "FCM message received: data=${message.data}")
+
         val type = message.data["type"] ?: return
         val senderName = message.data["senderName"] ?: "My Love"
         if (type == RemoteActionService.ACTION_POKE) {
@@ -36,7 +39,10 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun saveToken(token: String) {
-        val app = FirebaseApp.getApps(this).firstOrNull() ?: return
+        val app = FirebaseApp.getApps(this).firstOrNull() ?: run {
+            Log.w(TAG, "Cannot save FCM token: FirebaseApp is not initialized")
+            return
+        }
         val uid = FirebaseAuth.getInstance(app).currentUser?.uid
         if (uid.isNullOrBlank()) {
             Log.w(TAG, "Received a new FCM token before Firebase auth was ready")
@@ -53,7 +59,7 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
                 )
             )
             .addOnSuccessListener {
-                Log.d(TAG, "FCM token refreshed for uid=$uid")
+                Log.d(TAG, "FCM token refreshed successfully for uid=$uid")
             }
             .addOnFailureListener { error ->
                 Log.e(TAG, "Failed to save refreshed FCM token for uid=$uid", error)
