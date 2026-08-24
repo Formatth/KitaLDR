@@ -1,6 +1,7 @@
 package com.formatth.kitaldr.data
 
 import android.util.Log
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -20,7 +21,13 @@ object PushTokenRegistrar {
 
         Log.d(TAG, "Starting FCM token registration for uid=$uid")
 
-        FirebaseMessaging.getInstance().token
+        // Avoid FirebaseMessaging.getInstance() here because the current
+        // Kotlin/Firebase Messaging combination can resolve the package-
+        // private FirebaseApp overload. Obtain the component from the
+        // default FirebaseApp instead.
+        val messaging = FirebaseApp.getInstance().get(FirebaseMessaging::class.java)
+
+        messaging.token
             .addOnCompleteListener { task ->
                 if (!task.isSuccessful) {
                     Log.e(TAG, "Gagal ambil FCM token", task.exception)
