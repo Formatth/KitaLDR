@@ -11,9 +11,10 @@ KitaLDR is a solo-dev Android project made as a personal LDR companion. The firs
 - [x] Pairing UI prototype
 - [x] Disconnect/reset flow in prototype
 - [x] GitHub Actions debug APK build
+- [x] FCM token registration integration
 - [ ] Firebase Authentication
 - [ ] Secure one-couple-per-device pairing
-- [ ] Firebase Cloud Messaging (FCM)
+- [ ] Firebase Cloud Messaging (FCM) remote push delivery
 - [ ] Real remote vibration
 - [ ] Wake-up notification/sound
 - [ ] Local reminders
