@@ -13,7 +13,9 @@ object PushTokenRegistrar {
     fun register(app: FirebaseApp?, uid: String) {
         if (app == null || uid.isBlank()) return
 
-        FirebaseMessaging.getInstance(app).token
+        // FirebaseMessaging exposes the public singleton accessor without arguments.
+        // The FirebaseApp overload is package-private in the current Messaging SDK.
+        FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
                 if (token.isNullOrBlank()) {
                     Log.w(TAG, "FCM returned an empty token for uid=$uid")
