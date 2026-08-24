@@ -1,6 +1,6 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldPath } = require("firebase-admin/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
@@ -34,16 +34,22 @@ exports.sendPartnerActionNotification = onDocumentCreated(
     ]);
 
     const token = tokenSnap.data()?.token;
-    if (!token) return;
+    if (!token) {
+      console.warn("FCM token not found", { recipientUid });
+      return;
+    }
 
     const senderName = senderSnap.data()?.displayName || "My Love";
-
     const title = type === "POKE" ? `${senderName} poked you! ❤️` : "KitaLDR";
     const body = type === "POKE" ? "Your person sent you a poke." : "You have a new action.";
 
     try {
-      await getMessaging().send({
+      const messageId = await getMessaging().send({
         token,
+        notification: {
+          title,
+          body,
+        },
         data: {
           type: String(type),
           senderUid: String(senderUid),
@@ -54,13 +60,27 @@ exports.sendPartnerActionNotification = onDocumentCreated(
         },
         android: {
           priority: "high",
+          notification: {
+            channelId: "kitaldr_actions",
+            sound: "default",
+            priority: "high",
+          },
         },
       });
+
+      console.log("POKE notification sent", {
+        messageId,
+        recipientUid,
+        actionId: event.params.actionId,
+      });
     } catch (error) {
-      // Remove invalid tokens so a later pairing can register a fresh one.
       const code = error?.code || "";
-      if (code.includes("registration-token-not-registered") || code.includes("invalid-argument")) {
+      if (
+        code.includes("registration-token-not-registered") ||
+        code.includes("invalid-argument")
+      ) {
         await db.collection("deviceTokens").doc(recipientUid).delete();
+        console.warn("Removed invalid FCM token", { recipientUid, code });
       }
       console.error("Failed to send partner action notification", error);
     }
