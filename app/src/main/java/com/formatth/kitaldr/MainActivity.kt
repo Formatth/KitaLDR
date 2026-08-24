@@ -39,8 +39,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
         val repository = KitaLdrRepository(this)
         setContent {
             KitaLdrTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     KitaLdrApp(repository)
                 }
             }
@@ -86,14 +86,10 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
     }
 
     fun openAfterSignIn() {
-        repository.loadCurrentPair { pairResult ->
-            pairResult.onSuccess { pair ->
+        repository.loadCurrentPair { result ->
+            result.onSuccess { pair ->
                 pairInfo = pair
-                if (pair != null && pair.status == "active") {
-                    screen = Screen.Home
-                } else {
-                    screen = Screen.PairChoice
-                }
+                screen = if (pair?.status == "active") Screen.Home else Screen.PairChoice
                 busy = false
             }.onFailure(::showError)
         }
@@ -103,13 +99,11 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         if (!firebaseReady) return@LaunchedEffect
         if (repository.currentUid() != null) {
             openAfterSignIn()
-            return@LaunchedEffect
-        }
-
-        busy = true
-        repository.signIn { result ->
-            result.onSuccess { openAfterSignIn() }
-                .onFailure(::showError)
+        } else {
+            busy = true
+            repository.signIn { result ->
+                result.onSuccess { openAfterSignIn() }.onFailure(::showError)
+            }
         }
     }
 
@@ -122,8 +116,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
                 busy = true
                 message = ""
                 repository.signIn { result ->
-                    result.onSuccess { openAfterSignIn() }
-                        .onFailure(::showError)
+                    result.onSuccess { openAfterSignIn() }.onFailure(::showError)
                 }
             }
         }
@@ -176,7 +169,10 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
                             pairResult.onSuccess { pair ->
                                 pairInfo = pair
                                 busy = false
-                                if (pair != null && pair.status == "active") screen = Screen.Home
+                                if (pair?.status == "active") {
+                                    joinCode = ""
+                                    screen = Screen.Home
+                                }
                             }.onFailure(::showError)
                         }
                     }.onFailure(::showError)
@@ -209,14 +205,34 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
         )
     }
 
+    // Both devices listen to the shared couple document. When either side
+    // disconnects, the other side immediately leaves the Home screen too.
+    val activeCoupleId = pairInfo?.coupleId
+    if (activeCoupleId != null) {
+        DisposableEffect(activeCoupleId) {
+            val registration = repository.listenForCoupleStatus(activeCoupleId) {
+                busy = false
+                pairInfo = null
+                generatedCode = ""
+                generatedAt = 0L
+                joinCode = ""
+                message = "Your pair was disconnected."
+                screen = Screen.PairChoice
+            }
+            onDispose { registration?.remove() }
+        }
+    }
+
     if (generatedCode.isNotBlank()) {
         DisposableEffect(generatedCode) {
             val registration = repository.listenForPairingAcceptance(generatedCode) { coupleId ->
                 repository.loadCurrentPair { result ->
                     result.onSuccess { pair ->
                         pairInfo = pair
-                        if (pair?.coupleId == coupleId) {
+                        if (pair?.coupleId == coupleId && pair.status == "active") {
                             message = "Connected! ❤️"
+                            generatedCode = ""
+                            generatedAt = 0L
                             screen = Screen.Home
                         }
                     }
@@ -230,7 +246,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository) {
 @Composable
 private fun WelcomeScreen(firebaseReady: Boolean, busy: Boolean, message: String, onStart: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        Modifier.fillMaxSize().padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -243,8 +259,7 @@ private fun WelcomeScreen(firebaseReady: Boolean, busy: Boolean, message: String
         StatusPill(if (firebaseReady) "🟢 Firebase connected" else "🟡 Firebase setup needed")
         Spacer(Modifier.height(20.dp))
         Button(onClick = onStart, enabled = !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(21.dp), strokeWidth = 2.dp)
-            else Text("Get started ❤️", fontWeight = FontWeight.Bold)
+            if (busy) CircularProgressIndicator(Modifier.size(21.dp), strokeWidth = 2.dp) else Text("Get started ❤️", fontWeight = FontWeight.Bold)
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
@@ -257,7 +272,7 @@ private fun WelcomeScreen(firebaseReady: Boolean, busy: Boolean, message: String
 
 @Composable
 private fun PairChoiceScreen(busy: Boolean, onCreate: () -> Unit, onJoin: () -> Unit, onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("Connect", fontSize = 32.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text("Choose how you want to connect with your person.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -266,19 +281,24 @@ private fun PairChoiceScreen(busy: Boolean, onCreate: () -> Unit, onJoin: () -> 
         Spacer(Modifier.height(16.dp))
         ChoiceCard("🔗", "Join a pair", "Enter the pairing code your person shared.", onJoin, !busy)
         Spacer(Modifier.weight(1f))
-        Text("One person creates the code. The other person joins it.\nNo second code is needed.", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Text("One person creates the code. The other person joins it.\nNo second code is needed.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         Spacer(Modifier.height(14.dp))
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
 @Composable
 private fun ChoiceCard(emoji: String, title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))) {
-        Row(modifier = Modifier.fillMaxWidth().padding(22.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Text(emoji, fontSize = 28.sp) }
+    Card(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Text(emoji, fontSize = 28.sp) }
             Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(Modifier.weight(1f)) {
                 Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text(subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -292,7 +312,6 @@ private fun ChoiceCard(emoji: String, title: String, subtitle: String, onClick: 
 private fun CreatePairScreen(busy: Boolean, message: String, generatedCode: String, generatedAt: Long, onGenerate: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     var secondsLeft by rememberSaveable(generatedCode) { mutableIntStateOf(600) }
-
     LaunchedEffect(generatedCode, generatedAt) {
         if (generatedCode.isBlank() || generatedAt == 0L) return@LaunchedEffect
         while (true) {
@@ -303,125 +322,115 @@ private fun CreatePairScreen(busy: Boolean, message: String, generatedCode: Stri
             delay(1000)
         }
     }
-
     val expired = generatedCode.isNotBlank() && secondsLeft == 0
-    val minutes = secondsLeft / 60
-    val seconds = secondsLeft % 60
-
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("Create a pair", fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text("Create one code. Your person only needs to join it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(26.dp))
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-            Column(modifier = Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("YOUR CODE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("YOUR CODE", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(14.dp))
-                Text(if (generatedCode.isBlank()) "---- ----" else generatedCode, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(if (generatedCode.isBlank()) "---- ----" else generatedCode, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
                 Spacer(Modifier.height(12.dp))
-                Text(when {
-                    generatedCode.isBlank() -> "Generate a code to start waiting."
-                    expired -> "This code has expired. Generate a new one."
-                    else -> "Waiting for your person…"
-                }, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (generatedCode.isBlank()) "Generate a code to start waiting." else if (expired) "This code has expired. Generate a new one." else "Waiting for your person…", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (generatedCode.isNotBlank() && !expired) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Expires in %02d:%02d".format(minutes, seconds), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Expires in %02d:%02d".format(secondsLeft / 60, secondsLeft % 60), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.height(22.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { copyToClipboard(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, modifier = Modifier.weight(1f)) { Text("Copy") }
-                    Button(onClick = { shareCode(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, modifier = Modifier.weight(1f)) { Text("Share") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { copyToClipboard(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, Modifier.weight(1f)) { Text("Copy") }
+                    Button(onClick = { shareCode(context, generatedCode) }, enabled = generatedCode.isNotBlank() && !expired, Modifier.weight(1f)) { Text("Share") }
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onGenerate, enabled = !busy && (generatedCode.isBlank() || expired), modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Text(if (generatedCode.isBlank()) "Generate pairing code" else "Generate new code")
+        Button(onClick = onGenerate, enabled = !busy && (generatedCode.isBlank() || expired), Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
+            if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (generatedCode.isBlank()) "Generate pairing code" else "Generate new code")
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            Text(message, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            Text(message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
 @Composable
 private fun JoinPairScreen(busy: Boolean, message: String, joinCode: String, onJoinCodeChange: (String) -> Unit, onPair: () -> Unit, onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("Join a pair", fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text("Enter the code created by your person.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(30.dp))
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(modifier = Modifier.fillMaxWidth().padding(22.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.fillMaxWidth().padding(22.dp)) {
                 Text("Partner's pairing code", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = joinCode, onValueChange = onJoinCodeChange, modifier = Modifier.fillMaxWidth(), enabled = !busy, singleLine = true, placeholder = { Text("ABCD-2345") })
+                OutlinedTextField(value = joinCode, onValueChange = onJoinCodeChange, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true, placeholder = { Text("ABCD-2345") })
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = onPair, enabled = !busy && joinCode.length == 9, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
-                    if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Text("Join this pair ❤️", fontWeight = FontWeight.Bold)
+                Button(onClick = onPair, enabled = !busy && joinCode.length == 9, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) {
+                    if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Join this pair ❤️", fontWeight = FontWeight.Bold)
                 }
             }
         }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(14.dp))
-            Text(message, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            Text(message, Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Spacer(Modifier.height(18.dp))
-        Text("The code is short-lived and can only be used once.", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        Text("The code is short-lived and can only be used once.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
+        OutlinedButton(onClick = onBack, Modifier.fillMaxWidth(), enabled = !busy) { Text("Back") }
     }
 }
 
 @Composable
 private fun HomeScreen(pairInfo: PairInfo?, busy: Boolean, onDisconnect: () -> Unit) {
     val partnerName = pairInfo?.partnerName ?: "My Love"
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("KitaLDR", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Text("You two are connected ❤️", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text("Connected with $partnerName", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-            Column(modifier = Modifier.padding(22.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Column(Modifier.padding(22.dp)) {
                 Text("❤️ $partnerName", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 StatusPill("🟢 Pair active")
             }
         }
         Spacer(Modifier.height(20.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton("📳", "Poke", Modifier.weight(1f))
             ActionButton("🥺", "Miss You", Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton("😴", "Wake Up", Modifier.weight(1f))
             ActionButton("🍚", "Eat", Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
         Text("Pairing is live on Firebase. Remote actions will be added next.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
+        OutlinedButton(onClick = onDisconnect, Modifier.fillMaxWidth(), enabled = !busy) { Text("Disconnect partner") }
     }
 }
 
 @Composable
 private fun StatusPill(text: String) {
-    Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
 private fun ActionButton(icon: String, label: String, modifier: Modifier) {
-    Card(modifier = modifier, shape = RoundedCornerShape(20.dp)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Card(modifier, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(icon, fontSize = 32.sp)
             Spacer(Modifier.height(6.dp))
             Text(label, fontWeight = FontWeight.SemiBold)
@@ -429,22 +438,16 @@ private fun ActionButton(icon: String, label: String, modifier: Modifier) {
     }
 }
 
-private fun copyToClipboard(context: Context, code: String) {
-    if (code.isBlank()) return
+private fun copyToClipboard(context: Context, text: String) {
+    if (text.isBlank()) return
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("KitaLDR pairing code", code))
+    clipboard.setPrimaryClip(ClipData.newPlainText("KitaLDR pairing code", text))
 }
 
 private fun shareCode(context: Context, code: String) {
     if (code.isBlank()) return
-    val intent = Intent(Intent.ACTION_SEND).apply {
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, "Join me on KitaLDR ❤️\nPairing code: $code")
-    }
-    context.startActivity(Intent.createChooser(intent, "Share pairing code"))
-}
-
-@Composable
-private fun KitaLdrTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
+        putExtra(Intent.EXTRA_TEXT, "KitaLDR pairing code: $code")
+    }, "Share pairing code"))
 }
