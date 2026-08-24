@@ -1,0 +1,4 @@
+firebase-service-account.json
+cloudflared.exe
+node_modules/
+.env
