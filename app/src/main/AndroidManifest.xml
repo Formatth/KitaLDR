@@ -6,7 +6,9 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@drawable/ic_kitaldr_logo"
         android:label="KitaLDR"
+        android:roundIcon="@drawable/ic_kitaldr_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.KitaLDR">
         <activity
