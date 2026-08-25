@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -56,9 +56,26 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Upload debug APK
+      - name: Prepare direct APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk KitaLDR-debug.apk
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: KitaLDR-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: KitaLDR-debug.apk
           if-no-files-found: error
+
+      - name: Publish direct APK to debug-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view debug-latest >/dev/null 2>&1; then
+            gh release create debug-latest \
+              --target "$GITHUB_SHA" \
+              --title "KitaLDR Debug (Latest)" \
+              --notes "Latest successful debug APK from the main branch. This release is automatically updated by GitHub Actions." \
+              --prerelease
+          fi
+
+          gh release upload debug-latest KitaLDR-debug.apk --clobber
