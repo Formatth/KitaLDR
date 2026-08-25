@@ -56,7 +56,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly([
-          'displayName', 'pairId', 'createdAt', 'updatedAt'
+          'displayName', 'photoUrl', 'photoPath', 'pairId', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.pairId == null;
 
@@ -64,7 +64,7 @@ service cloud.firestore {
         (
           request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['displayName', 'pairId', 'updatedAt'])
+            .hasOnly(['displayName', 'photoUrl', 'photoPath', 'pairId', 'updatedAt'])
           && (
             request.resource.data.pairId == null
             || (
@@ -95,8 +95,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Each authenticated device may register only its own FCM token.
-    // The backend reads these documents with Admin SDK when sending pushes.
     match /deviceTokens/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list: if false;
