@@ -30,6 +30,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -192,7 +204,7 @@ private fun KitaLdrApp(repository: KitaLdrRepository, actions: RemoteActionServi
                     actionBusy = true
                     message = ""
                     actions.sendAction(coupleId, type) { result ->
-                        result.onSuccess { actionBusy = false; message = "Sent ❤️" }
+                        result.onSuccess { actionBusy = false; message = "Sent" }
                             .onFailure { actionBusy = false; message = it.message ?: "Could not send." }
                     }
                 }
@@ -358,7 +370,7 @@ private fun PairOption(number: String, title: String, subtitle: String, accent: 
                 Spacer(Modifier.height(3.dp))
                 Text(subtitle, color = Muted, fontSize = 13.sp)
             }
-            Text("›", color = accent, fontSize = 30.sp)
+            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -500,13 +512,13 @@ private fun HomeDashboard(self: String, partner: String, busy: Boolean, message:
         Text("Quick moments", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MomentTile("✦", "Miss you", Lavender, Modifier.weight(1f))
-            MomentTile("☀", "Wake up", Color(0xFF4FAE97), Modifier.weight(1f))
+            MomentTile(Icons.Filled.AutoAwesome, "Miss you", Lavender, Modifier.weight(1f))
+            MomentTile(Icons.Filled.WbSunny, "Wake up", Color(0xFF4FAE97), Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MomentTile("♡", "Thinking of you", Rose, Modifier.weight(1f))
-            MomentTile("⌁", "Eat well", Color(0xFFE0A04B), Modifier.weight(1f))
+            MomentTile(Icons.Filled.FavoriteBorder, "Thinking of you", Rose, Modifier.weight(1f))
+            MomentTile(Icons.Filled.Restaurant, "Eat well", Color(0xFFE0A04B), Modifier.weight(1f))
         }
         Spacer(Modifier.height(22.dp))
         SurfacePanel(Modifier.fillMaxWidth(), background = Color(0xFFF8F5FF)) {
@@ -537,8 +549,8 @@ private fun TogetherCard(self: String, partner: String) {
                     Text(self, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("♥", color = Rose, fontSize = 27.sp)
-                    Text("connected", color = Muted, fontSize = 11.sp)
+                    Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(27.dp))
+                    Text("Together", color = Muted, fontSize = 11.sp)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                     Avatar(partner, Lavender, 62)
@@ -558,7 +570,7 @@ private fun PokeButton(partner: String, busy: Boolean, onClick: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).clip(CircleShape).background(Rose), contentAlignment = Alignment.Center) {
-                Text("♥", color = Color.White, fontSize = 23.sp)
+                Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.White, modifier = Modifier.size(23.dp))
             }
             Spacer(Modifier.width(13.dp))
             Column {
@@ -566,16 +578,16 @@ private fun PokeButton(partner: String, busy: Boolean, onClick: () -> Unit) {
                 Text("Poke $partner", color = Color(0xFFCFC8CE), fontSize = 12.sp)
             }
             Spacer(Modifier.weight(1f))
-            Text("›", color = Color.White, fontSize = 28.sp)
+            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
         }
     }
 }
 
 @Composable
-private fun MomentTile(icon: String, label: String, accent: Color, modifier: Modifier) {
+private fun MomentTile(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, accent: Color, modifier: Modifier) {
     SurfacePanel(modifier, background = accent.copy(alpha = .075f)) {
         Column(Modifier.fillMaxWidth().padding(17.dp)) {
-            Text(icon, color = accent, fontSize = 25.sp)
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(25.dp))
             Spacer(Modifier.height(12.dp))
             Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
@@ -592,7 +604,7 @@ private fun LoveScreen(partner: String, busy: Boolean, action: (String) -> Unit)
         Spacer(Modifier.height(28.dp))
         SurfacePanel(Modifier.fillMaxWidth(), background = RoseSoft) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("♥", color = Rose, fontSize = 52.sp)
+                Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(52.dp))
                 Spacer(Modifier.height(10.dp))
                 Text("Thinking of $partner?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(6.dp))
@@ -663,13 +675,13 @@ private fun PokeOverlay(partner: String, dismiss: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f)), contentAlignment = Alignment.BottomCenter) {
         SurfacePanel(Modifier.fillMaxWidth().navigationBarsPadding(), background = Color.White, radius = 30.dp) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(64.dp).clip(CircleShape).background(RoseSoft), contentAlignment = Alignment.Center) { Text("♥", color = Rose, fontSize = 30.sp) }
+                Box(Modifier.size(64.dp).clip(CircleShape).background(RoseSoft), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(30.dp)) }
                 Spacer(Modifier.height(12.dp))
                 Text("$partner poked you", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(5.dp))
                 Text("Someone is thinking about you.", color = Muted)
                 Spacer(Modifier.height(18.dp))
-                PrimaryButton("Got it ❤️", true, dismiss)
+                PrimaryButton("Got it", true, dismiss)
             }
         }
     }
@@ -678,21 +690,24 @@ private fun PokeOverlay(partner: String, dismiss: () -> Unit) {
 @Composable
 private fun PremiumNav(selected: Int, onSelect: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        NavItem("⌂", "Home", selected == 0) { onSelect(0) }
-        NavItem("♥", "Love", selected == 1) { onSelect(1) }
-        NavItem("□", "Calendar", selected == 2) { onSelect(2) }
-        NavItem("•••", "More", selected == 3) { onSelect(3) }
+        NavItem(Icons.Filled.Home, "Home", selected == 0) { onSelect(0) }
+        NavItem(Icons.Filled.Favorite, "Love", selected == 1) { onSelect(1) }
+        NavItem(Icons.Filled.CalendarMonth, "Calendar", selected == 2) { onSelect(2) }
+        NavItem(Icons.Filled.MoreHoriz, "More", selected == 3) { onSelect(3) }
     }
 }
 
 @Composable
-private fun NavItem(icon: String, label: String, selected: Boolean, onClick: () -> Unit) {
-    Column(Modifier.width(76.dp).clip(RoundedCornerShape(15.dp)).clickable(onClick = onClick).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(icon, color = if (selected) Rose else Muted, fontSize = if (icon == "•••") 15.sp else 21.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(2.dp))
+private fun NavItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).background(if (selected) RoseSoft else Color.Transparent).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = label, tint = if (selected) Rose else Muted, modifier = Modifier.size(21.dp))
+        Spacer(Modifier.height(3.dp))
         Text(label, color = if (selected) Ink else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
@@ -719,7 +734,7 @@ private fun Avatar(name: String, accent: Color, size: Int) {
 @Composable
 private fun BrandMark(size: Int) {
     Box(Modifier.size(size.dp).clip(RoundedCornerShape((size * .28f).dp)).background(RoseSoft), contentAlignment = Alignment.Center) {
-        Text("♥", color = Rose, fontSize = (size * .43f).sp)
+        Icon(Icons.Filled.Favorite, contentDescription = "KitaLDR", tint = Rose, modifier = Modifier.size((size * .43f).dp))
     }
 }
 
