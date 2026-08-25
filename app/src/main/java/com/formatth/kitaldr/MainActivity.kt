@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -697,7 +698,7 @@ private fun NavItem(icon: String, label: String, selected: Boolean, onClick: () 
 }
 
 @Composable
-private fun SurfacePanel(modifier: Modifier, background: Color = Color.White, radius: Dp = 22.dp, content: @Composable () -> Unit) {
+private fun SurfacePanel(modifier: Modifier, background: Color = Color.White, radius: Dp = 22.dp, content: @Composable ColumnScope.() -> Unit) {
     Card(modifier = modifier, shape = RoundedCornerShape(radius), colors = CardDefaults.cardColors(containerColor = background), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), content = content)
 }
 
