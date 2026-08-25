@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.formatth.kitaldr.MainActivity
+import com.formatth.kitaldr.R
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -29,12 +30,9 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
         Log.d(TAG, "FCM message received: data=${message.data}")
 
         val type = message.data["type"] ?: return
-        val senderName = message.data["senderName"] ?: "My Love"
+        val senderName = message.data["senderName"]?.takeIf { it.isNotBlank() } ?: "My Love"
         if (type == RemoteActionService.ACTION_POKE) {
-            showActionNotification(
-                "$senderName poked you! ❤️",
-                "Open KitaLDR to respond."
-            )
+            showActionNotification("$senderName poked you! ❤️", "Open KitaLDR to respond.")
         }
     }
 
@@ -48,51 +46,29 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
             Log.w(TAG, "Received a new FCM token before Firebase auth was ready")
             return
         }
-
-        FirebaseFirestore.getInstance(app)
-            .collection("deviceTokens")
-            .document(uid)
-            .set(
-                mapOf(
-                    "token" to token,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-            )
-            .addOnSuccessListener {
-                Log.d(TAG, "FCM token refreshed successfully for uid=$uid")
-            }
-            .addOnFailureListener { error ->
-                Log.e(TAG, "Failed to save refreshed FCM token for uid=$uid", error)
-            }
+        FirebaseFirestore.getInstance(app).collection("deviceTokens").document(uid).set(
+            mapOf("token" to token, "updatedAt" to FieldValue.serverTimestamp())
+        ).addOnSuccessListener {
+            Log.d(TAG, "FCM token refreshed successfully for uid=$uid")
+        }.addOnFailureListener { error ->
+            Log.e(TAG, "Failed to save refreshed FCM token for uid=$uid", error)
+        }
     }
 
     private fun showActionNotification(title: String, body: String) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "KitaLDR actions",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
+            val channel = NotificationChannel(CHANNEL_ID, "KitaLDR actions", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Notifications from your KitaLDR partner"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 180, 100, 280)
             }
             manager.createNotificationChannel(channel)
         }
-
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            1001,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+        val pendingIntent = PendingIntent.getActivity(this, 1001, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_kitaldr_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -102,7 +78,6 @@ class KitaLdrFirebaseMessagingService : FirebaseMessagingService() {
             .setVibrate(longArrayOf(0, 180, 100, 280))
             .setContentIntent(pendingIntent)
             .build()
-
         manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
     }
 
