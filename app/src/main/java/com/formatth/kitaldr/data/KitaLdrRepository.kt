@@ -1,23 +1,32 @@
 package com.formatth.kitaldr.data
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.Timestamp
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import kotlin.random.Random
 
-/** Firebase-backed pairing layer. */
-class KitaLdrRepository(context: Context) {
+/** Firebase-backed pairing and profile layer. */
+class KitaLdrRepository(private val context: Context) {
     private val app = FirebaseApp.getApps(context).firstOrNull()
     private val auth = app?.let { FirebaseAuth.getInstance(it) }
     private val db = app?.let { FirebaseFirestore.getInstance(it) }
+    private val storage = app?.let { FirebaseStorage.getInstance(it) }
 
     val isConfigured: Boolean get() = auth != null && db != null
     val firebaseProjectId: String? get() = app?.options?.projectId
@@ -124,6 +133,8 @@ class KitaLdrRepository(context: Context) {
             } else {
                 ref.set(mapOf(
                     "displayName" to "My Love",
+                    "photoUrl" to null,
+                    "photoPath" to null,
                     "pairId" to null,
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp(),
@@ -316,13 +327,34 @@ class KitaLdrRepository(context: Context) {
                     onResult(Result.success(PairInfo(
                         coupleId = pairId,
                         selfName = user.getString("displayName") ?: "",
+                        selfPhotoUrl = user.getString("photoUrl").orEmpty(),
                         partnerUid = partnerUid,
                         partnerName = partner.getString("displayName") ?: "My Love",
+                        partnerPhotoUrl = partner.getString("photoUrl").orEmpty(),
                         status = status,
                     )))
                 }.addOnFailureListener { onResult(Result.failure(it)) }
             }.addOnFailureListener { onResult(Result.failure(it)) }
         }.addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
+    fun listenForPairProfiles(base: PairInfo, onUpdate: (PairInfo) -> Unit): ListenerRegistration? {
+        val firestore = db ?: return null
+        val uid = currentUid() ?: return null
+        return firestore.collection("users")
+            .whereIn(FieldPath.documentId(), listOf(uid, base.partnerUid))
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val byId = snapshot.documents.associateBy { it.id }
+                val self = byId[uid] ?: return@addSnapshotListener
+                val partner = byId[base.partnerUid] ?: return@addSnapshotListener
+                onUpdate(base.copy(
+                    selfName = self.getString("displayName").orEmpty(),
+                    selfPhotoUrl = self.getString("photoUrl").orEmpty(),
+                    partnerName = partner.getString("displayName").orEmpty().ifBlank { "My Love" },
+                    partnerPhotoUrl = partner.getString("photoUrl").orEmpty(),
+                ))
+            }
     }
 
     fun setDisplayName(name: String, onResult: (Result<Unit>) -> Unit) {
@@ -344,6 +376,89 @@ class KitaLdrRepository(context: Context) {
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
+    fun uploadProfilePhoto(sourceUri: Uri, onResult: (Result<String>) -> Unit) {
+        val uid = currentUid()
+        val firestore = db
+        val firebaseStorage = storage
+        if (uid == null || firestore == null || firebaseStorage == null) {
+            onResult(Result.failure(IllegalStateException("Profile photo storage is not configured.")))
+            return
+        }
+
+        Thread {
+            try {
+                val compressedUri = compressProfileImage(sourceUri)
+                firestore.collection("users").document(uid).get()
+                    .addOnSuccessListener { snapshot ->
+                        val oldPath = snapshot.getString("photoPath").orEmpty()
+                        val path = "profile/$uid/${System.currentTimeMillis()}.jpg"
+                        val ref = firebaseStorage.reference.child(path)
+                        val metadata = StorageMetadata.Builder()
+                            .setContentType("image/jpeg")
+                            .build()
+                        ref.putFile(compressedUri, metadata)
+                            .continueWithTask { task ->
+                                if (!task.isSuccessful) throw task.exception ?: IllegalStateException("Profile upload failed.")
+                                ref.downloadUrl
+                            }
+                            .addOnSuccessListener { downloadUri ->
+                                firestore.collection("users").document(uid).update(mapOf(
+                                    "photoUrl" to downloadUri.toString(),
+                                    "photoPath" to path,
+                                    "updatedAt" to FieldValue.serverTimestamp(),
+                                )).addOnSuccessListener {
+                                    if (oldPath.isNotBlank() && oldPath != path) {
+                                        firebaseStorage.reference.child(oldPath).delete()
+                                    }
+                                    compressedUri.path?.let { File(it).delete() }
+                                    onResult(Result.success(downloadUri.toString()))
+                                }.addOnFailureListener {
+                                    compressedUri.path?.let { File(it).delete() }
+                                    onResult(Result.failure(it))
+                                }
+                            }
+                            .addOnFailureListener {
+                                compressedUri.path?.let { File(it).delete() }
+                                onResult(Result.failure(it))
+                            }
+                    }
+                    .addOnFailureListener {
+                        sourceUri.path?.let { File(it).delete() }
+                        onResult(Result.failure(it))
+                    }
+            } catch (error: Exception) {
+                onResult(Result.failure(error))
+            }
+        }.start()
+    }
+
+    private fun compressProfileImage(sourceUri: Uri): Uri {
+        val resolver = context.contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(sourceUri).use { input ->
+            BitmapFactory.decodeStream(input, null, bounds)
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("Selected file is not a valid image.")
+
+        var sample = 1
+        while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = resolver.openInputStream(sourceUri).use { input ->
+            BitmapFactory.decodeStream(input, null, options)
+        } ?: throw IllegalArgumentException("Could not read selected image.")
+
+        val output = File.createTempFile("kitaldr_profile_", ".jpg", context.cacheDir)
+        FileOutputStream(output).use { stream ->
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, stream)) {
+                bitmap.recycle()
+                output.delete()
+                throw IllegalStateException("Could not compress selected image.")
+            }
+        }
+        bitmap.recycle()
+        return Uri.fromFile(output)
+    }
+
     private fun generatePairCode(): String {
         val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         val raw = buildString { repeat(8) { append(alphabet[Random.nextInt(alphabet.length)]) } }
@@ -359,8 +474,10 @@ class KitaLdrRepository(context: Context) {
 data class PairInfo(
     val coupleId: String,
     val selfName: String,
+    val selfPhotoUrl: String,
     val partnerUid: String,
     val partnerName: String,
+    val partnerPhotoUrl: String,
     val status: String,
 )
 
