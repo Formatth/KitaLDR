@@ -135,6 +135,20 @@ class KitaLdrRepository(context: Context) {
         }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 
+    fun loadCurrentDisplayName(onResult: (Result<String>) -> Unit) {
+        val uid = currentUid()
+        val firestore = db
+        if (uid == null || firestore == null) {
+            onResult(Result.failure(IllegalStateException("Not signed in to Firebase.")))
+            return
+        }
+        firestore.collection("users").document(uid).get()
+            .addOnSuccessListener { snapshot ->
+                onResult(Result.success(snapshot.getString("displayName").orEmpty().trim()))
+            }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
     fun createPairingCode(onResult: (Result<String>) -> Unit) {
         val uid = currentUid()
         val firestore = db
@@ -219,7 +233,6 @@ class KitaLdrRepository(context: Context) {
         }
     }
 
-    /** Realtime listener used by both devices to react when either partner disconnects. */
     fun listenForCoupleStatus(coupleId: String, onDisconnected: () -> Unit): ListenerRegistration? {
         val firestore = db ?: return null
         val uid = currentUid() ?: return null
@@ -302,6 +315,7 @@ class KitaLdrRepository(context: Context) {
                 firestore.collection("users").document(partnerUid).get().addOnSuccessListener { partner ->
                     onResult(Result.success(PairInfo(
                         coupleId = pairId,
+                        selfName = user.getString("displayName") ?: "",
                         partnerUid = partnerUid,
                         partnerName = partner.getString("displayName") ?: "My Love",
                         status = status,
@@ -318,8 +332,13 @@ class KitaLdrRepository(context: Context) {
             onResult(Result.failure(IllegalStateException("Not signed in to Firebase.")))
             return
         }
+        val cleanName = name.trim().take(30)
+        if (cleanName.isBlank()) {
+            onResult(Result.failure(IllegalArgumentException("Name cannot be empty.")))
+            return
+        }
         firestore.collection("users").document(uid).update(mapOf(
-            "displayName" to name.trim().take(30).ifBlank { "My Love" },
+            "displayName" to cleanName,
             "updatedAt" to FieldValue.serverTimestamp(),
         )).addOnSuccessListener { onResult(Result.success(Unit)) }
             .addOnFailureListener { onResult(Result.failure(it)) }
@@ -339,6 +358,7 @@ class KitaLdrRepository(context: Context) {
 
 data class PairInfo(
     val coupleId: String,
+    val selfName: String,
     val partnerUid: String,
     val partnerName: String,
     val status: String,
