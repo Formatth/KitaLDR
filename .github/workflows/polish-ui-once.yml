@@ -1,0 +1,191 @@
+name: One-time UI Polish
+
+on:
+  push:
+    paths:
+      - .github/workflows/polish-ui-once.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    environment: FIREBASE_API_KEY
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Inject Firebase API key
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          key = os.environ.get('FIREBASE_API_KEY', '').strip()
+          if not key:
+              raise SystemExit('FIREBASE_API_KEY GitHub Actions secret is not configured')
+          path = Path('app/google-services.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          data['client'][0]['api_key'][0]['current_key'] = key
+          path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Apply native Material icon UI polish
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/src/main/java/com/formatth/kitaldr/MainActivity.kt')
+          text = path.read_text(encoding='utf-8')
+
+          imports = '''import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.ArrowForward
+          import androidx.compose.material.icons.filled.AutoAwesome
+          import androidx.compose.material.icons.filled.CalendarMonth
+          import androidx.compose.material.icons.filled.ChevronRight
+          import androidx.compose.material.icons.filled.Favorite
+          import androidx.compose.material.icons.filled.FavoriteBorder
+          import androidx.compose.material.icons.filled.Home
+          import androidx.compose.material.icons.filled.MoreHoriz
+          import androidx.compose.material.icons.filled.Restaurant
+          import androidx.compose.material.icons.filled.WbSunny
+          import androidx.compose.material3.Icon
+          '''
+          anchor = 'import androidx.compose.material3.Button\n'
+          if 'import androidx.compose.material.icons.Icons' not in text:
+              text = text.replace(anchor, imports + anchor, 1)
+
+          replacements = {
+              'message = "Sent ❤️"': 'message = "Sent"',
+              'Text("♥", color = Rose, fontSize = 27.sp)': 'Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(27.dp))',
+              'Text("♥", color = Color.White, fontSize = 23.sp)': 'Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.White, modifier = Modifier.size(23.dp))',
+              'Text("♥", color = Rose, fontSize = 52.sp)': 'Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(52.dp))',
+              'Text("♥", color = Rose, fontSize = 30.sp)': 'Icon(Icons.Filled.Favorite, contentDescription = null, tint = Rose, modifier = Modifier.size(30.dp))',
+              'Text("›", color = Color.White, fontSize = 28.sp)': 'Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))',
+              'Text("›", color = accent, fontSize = 30.sp)': 'Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))',
+              'Text("connected", color = Muted, fontSize = 11.sp)': 'Text("Together", color = Muted, fontSize = 11.sp)',
+              'PrimaryButton("Got it ❤️", true, dismiss)': 'PrimaryButton("Got it", true, dismiss)',
+              'MomentTile("✦", "Miss you", Lavender, Modifier.weight(1f))': 'MomentTile(Icons.Filled.AutoAwesome, "Miss you", Lavender, Modifier.weight(1f))',
+              'MomentTile("☀", "Wake up", Color(0xFF4FAE97), Modifier.weight(1f))': 'MomentTile(Icons.Filled.WbSunny, "Wake up", Color(0xFF4FAE97), Modifier.weight(1f))',
+              'MomentTile("♡", "Thinking of you", Rose, Modifier.weight(1f))': 'MomentTile(Icons.Filled.FavoriteBorder, "Thinking of you", Rose, Modifier.weight(1f))',
+              'MomentTile("⌁", "Eat well", Color(0xFFE0A04B), Modifier.weight(1f))': 'MomentTile(Icons.Filled.Restaurant, "Eat well", Color(0xFFE0A04B), Modifier.weight(1f))',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+
+          text = text.replace('private fun MomentTile(icon: String, label: String, accent: Color, modifier: Modifier)', 'private fun MomentTile(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, accent: Color, modifier: Modifier)')
+          text = text.replace('            Text(icon, color = accent, fontSize = 25.sp)', '            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(25.dp))')
+
+          old_nav = '''@Composable
+          private fun PremiumNav(selected: Int, onSelect: (Int) -> Unit) {
+              Row(
+                  Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 9.dp),
+                  horizontalArrangement = Arrangement.SpaceEvenly,
+              ) {
+                  NavItem("⌂", "Home", selected == 0) { onSelect(0) }
+                  NavItem("♥", "Love", selected == 1) { onSelect(1) }
+                  NavItem("□", "Calendar", selected == 2) { onSelect(2) }
+                  NavItem("•••", "More", selected == 3) { onSelect(3) }
+              }
+          }
+
+          @Composable
+          private fun NavItem(icon: String, label: String, selected: Boolean, onClick: () -> Unit) {
+              Column(Modifier.width(76.dp).clip(RoundedCornerShape(15.dp)).clickable(onClick = onClick).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                  Text(icon, color = if (selected) Rose else Muted, fontSize = if (icon == "•••") 15.sp else 21.sp, fontWeight = FontWeight.Bold)
+                  Spacer(Modifier.height(2.dp))
+                  Text(label, color = if (selected) Ink else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+              }
+          }
+          '''
+          new_nav = '''@Composable
+          private fun PremiumNav(selected: Int, onSelect: (Int) -> Unit) {
+              Row(
+                  Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp),
+                  horizontalArrangement = Arrangement.SpaceEvenly,
+              ) {
+                  NavItem(Icons.Filled.Home, "Home", selected == 0) { onSelect(0) }
+                  NavItem(Icons.Filled.Favorite, "Love", selected == 1) { onSelect(1) }
+                  NavItem(Icons.Filled.CalendarMonth, "Calendar", selected == 2) { onSelect(2) }
+                  NavItem(Icons.Filled.MoreHoriz, "More", selected == 3) { onSelect(3) }
+              }
+          }
+
+          @Composable
+          private fun NavItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+              Column(
+                  Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).background(if (selected) RoseSoft else Color.Transparent).padding(vertical = 6.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+              ) {
+                  Icon(icon, contentDescription = label, tint = if (selected) Rose else Muted, modifier = Modifier.size(21.dp))
+                  Spacer(Modifier.height(3.dp))
+                  Text(label, color = if (selected) Ink else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+              }
+          }
+          '''
+          if old_nav not in text:
+              raise SystemExit('Expected PremiumNav block was not found')
+          text = text.replace(old_nav, new_nav, 1)
+
+          old_brand = '''@Composable
+          private fun BrandMark(size: Int) {
+              Box(Modifier.size(size.dp).clip(RoundedCornerShape((size * .28f).dp)).background(RoseSoft), contentAlignment = Alignment.Center) {
+                  Text("♥", color = Rose, fontSize = (size * .43f).sp)
+              }
+          }
+          '''
+          new_brand = '''@Composable
+          private fun BrandMark(size: Int) {
+              Box(Modifier.size(size.dp).clip(RoundedCornerShape((size * .28f).dp)).background(RoseSoft), contentAlignment = Alignment.Center) {
+                  Icon(Icons.Filled.Favorite, contentDescription = "KitaLDR", tint = Rose, modifier = Modifier.size((size * .43f).dp))
+              }
+          }
+          '''
+          if old_brand not in text:
+              raise SystemExit('Expected BrandMark block was not found')
+          text = text.replace(old_brand, new_brand, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify Kotlin source
+        run: |
+          grep -q 'Icons.Filled.Favorite' app/src/main/java/com/formatth/kitaldr/MainActivity.kt
+          grep -q 'private fun NavItem(icon: androidx.compose.ui.graphics.vector.ImageVector' app/src/main/java/com/formatth/kitaldr/MainActivity.kt
+
+      - name: Build UI-polished APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Commit UI polish and remove one-time workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/formatth/kitaldr/MainActivity.kt
+          git rm .github/workflows/polish-ui-once.yml
+          git commit -m 'feat(ui): polish native Material icons and navigation'
+          git push origin HEAD:main
+
+      - name: Trigger Android Build on polished commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android.yml --ref main
