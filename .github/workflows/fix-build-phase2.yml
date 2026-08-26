@@ -40,3 +40,5 @@ jobs:
           git add app/src/main/java/com/formatth/kitaldr/MainActivity.kt app/src/main/java/coil3/compose/AsyncImageCompat.kt app/src/main/java/coil3/request/ImageRequestCompat.kt .github/workflows/fix-build-phase2.yml
           git commit -m "fix(profile): use Coil 2 directly and repair button callback" || exit 0
           git push origin HEAD:main
+
+# repair trigger
