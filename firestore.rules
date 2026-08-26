@@ -56,7 +56,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly([
-          'displayName', 'pairId', 'createdAt', 'updatedAt'
+          'displayName', 'photoUrl', 'photoPath', 'pairId', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.pairId == null;
 
@@ -64,12 +64,17 @@ service cloud.firestore {
         (
           request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['displayName', 'pairId', 'updatedAt'])
+            .hasOnly(['displayName', 'photoUrl', 'photoPath', 'pairId', 'updatedAt'])
           && (
-            request.resource.data.pairId == null
+            request.resource.data.pairId == resource.data.pairId
+            || request.resource.data.pairId == null
             || (
-              getAfter(couplePath(request.resource.data.pairId)).data.memberA == uid
-              || getAfter(couplePath(request.resource.data.pairId)).data.memberB == uid
+              request.resource.data.pairId is string
+              && get(couplePath(request.resource.data.pairId)).data.status == 'active'
+              && (
+                get(couplePath(request.resource.data.pairId)).data.memberA == uid
+                || get(couplePath(request.resource.data.pairId)).data.memberB == uid
+              )
             )
           )
         )
@@ -80,14 +85,14 @@ service cloud.firestore {
           && request.resource.data.pairId == null
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['pairId', 'updatedAt'])
-          && getAfter(couplePath(resource.data.pairId)).data.status == 'disconnected'
+          && get(couplePath(resource.data.pairId)).data.status == 'disconnected'
           && (
-            getAfter(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
-            || getAfter(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
+            get(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
+            || get(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
           )
           && (
-            getAfter(couplePath(resource.data.pairId)).data.memberA == uid
-            || getAfter(couplePath(resource.data.pairId)).data.memberB == uid
+            get(couplePath(resource.data.pairId)).data.memberA == uid
+            || get(couplePath(resource.data.pairId)).data.memberB == uid
           )
         )
       );
