@@ -86,8 +86,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
+import coil.compose.AsyncImage
 import com.formatth.kitaldr.data.KitaLdrRepository
 import com.formatth.kitaldr.data.PairInfo
 import com.formatth.kitaldr.data.PushTokenRegistrar
@@ -511,7 +510,7 @@ private fun MoreScreen(pair: PairInfo?, self: String, partner: String, edit: Str
         SurfacePanel(Modifier.fillMaxWidth(), background = RosePale) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) { ProfileAvatar(partner, pair?.partnerPhotoUrl.orEmpty(), Lavender, 56); Spacer(Modifier.width(14.dp)); Column { Text(partner, fontWeight = FontWeight.Bold); Spacer(Modifier.height(3.dp)); Text("Your partner's profile updates live here.", color = Muted, fontSize = 12.sp) } }
         }
-        Spacer(Modifier.height(16.dp)); OutlinedButton(disconnect, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) { Text("Disconnect") }
+        Spacer(Modifier.height(16.dp)); OutlinedButton(onClick = disconnect, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) { Text("Disconnect") }
         Spacer(Modifier.height(12.dp)); Text("Profile photo is compressed before upload.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
     }
 }
@@ -559,7 +558,7 @@ private fun ProfileAvatar(name: String, photoUrl: String, accent: Color, size: I
             Text(name.trim().firstOrNull()?.uppercase() ?: "♥", color = accent, fontSize = (size * .34f).sp, fontWeight = FontWeight.ExtraBold)
         } else {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(photoUrl).crossfade(true).build(),
+                model = photoUrl,
                 contentDescription = "$name profile photo",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
