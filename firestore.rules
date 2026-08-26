@@ -22,77 +22,81 @@ service cloud.firestore {
         );
     }
 
+    function isActiveCoupleMember(coupleId) {
+      return signedIn()
+        && get(couplePath(coupleId)).data.status == 'active'
+        && (
+          get(couplePath(coupleId)).data.memberA == request.auth.uid
+          || get(couplePath(coupleId)).data.memberB == request.auth.uid
+        );
+    }
+
     match /users/{uid} {
+      // Own profile, or the profile of the other member of the same active couple.
+      // This is intentionally get-only: the app uses a document snapshot listener,
+      // so realtime profile updates do not require collection/list permission.
       allow get: if signedIn() && (
         request.auth.uid == uid
         || (
           get(userPath(request.auth.uid)).data.pairId is string
-          && get(couplePath(
-            get(userPath(request.auth.uid)).data.pairId
-          )).data.status == 'active'
+          && isActiveCoupleMember(get(userPath(request.auth.uid)).data.pairId)
           && (
-            get(couplePath(
-              get(userPath(request.auth.uid)).data.pairId
-            )).data.memberA == request.auth.uid
-            ||
-            get(couplePath(
-              get(userPath(request.auth.uid)).data.pairId
-            )).data.memberB == request.auth.uid
-          )
-          && (
-            get(couplePath(
-              get(userPath(request.auth.uid)).data.pairId
-            )).data.memberA == uid
-            ||
-            get(couplePath(
-              get(userPath(request.auth.uid)).data.pairId
-            )).data.memberB == uid
+            get(couplePath(get(userPath(request.auth.uid)).data.pairId)).data.memberA == uid
+            || get(couplePath(get(userPath(request.auth.uid)).data.pairId)).data.memberB == uid
           )
         )
       );
 
       allow list: if false;
 
+      // Profile photo fields are optional. Existing users created before Phase 2
+      // remain valid because absent optional fields are not required here.
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly([
           'displayName', 'photoUrl', 'photoPath', 'pairId', 'createdAt', 'updatedAt'
         ])
-        && request.resource.data.pairId == null;
+        && request.resource.data.pairId == null
+        && (!('photoUrl' in request.resource.data) || request.resource.data.photoUrl == null || request.resource.data.photoUrl is string)
+        && (!('photoPath' in request.resource.data) || request.resource.data.photoPath == null || request.resource.data.photoPath is string);
 
       allow update: if signedIn() && (
+        // The owner may update their display name/profile photo and pair state.
         (
           request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['displayName', 'photoUrl', 'photoPath', 'pairId', 'updatedAt'])
+          && (!('photoUrl' in request.resource.data) || request.resource.data.photoUrl == null || request.resource.data.photoUrl is string)
+          && (!('photoPath' in request.resource.data) || request.resource.data.photoPath == null || request.resource.data.photoPath is string)
           && (
             request.resource.data.pairId == resource.data.pairId
             || request.resource.data.pairId == null
             || (
               request.resource.data.pairId is string
-              && get(couplePath(request.resource.data.pairId)).data.status == 'active'
+              && getAfter(couplePath(request.resource.data.pairId)).data.status == 'active'
               && (
-                get(couplePath(request.resource.data.pairId)).data.memberA == uid
-                || get(couplePath(request.resource.data.pairId)).data.memberB == uid
+                getAfter(couplePath(request.resource.data.pairId)).data.memberA == uid
+                || getAfter(couplePath(request.resource.data.pairId)).data.memberB == uid
               )
             )
           )
         )
         ||
+        // A partner may only clear the other user's pairId as part of disconnect.
         (
           request.auth.uid != uid
           && resource.data.pairId is string
           && request.resource.data.pairId == null
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['pairId', 'updatedAt'])
-          && get(couplePath(resource.data.pairId)).data.status == 'disconnected'
+          && getAfter(couplePath(resource.data.pairId)).data.status == 'disconnected'
           && (
-            get(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
-            || get(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
+            getAfter(couplePath(resource.data.pairId)).data.memberA == request.auth.uid
+            || getAfter(couplePath(resource.data.pairId)).data.memberB == request.auth.uid
           )
           && (
-            get(couplePath(resource.data.pairId)).data.memberA == uid
-            || get(couplePath(resource.data.pairId)).data.memberB == uid
+            getAfter(couplePath(resource.data.pairId)).data.memberA == uid
+            || getAfter(couplePath(resource.data.pairId)).data.memberB == uid
           )
         )
       );
@@ -100,8 +104,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Each authenticated device may register only its own FCM token.
-    // The backend reads these documents with Admin SDK when sending pushes.
     match /deviceTokens/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list: if false;
@@ -136,6 +138,7 @@ service cloud.firestore {
         && request.resource.data.expiresAt > request.time
         && request.resource.data.expiresAt <= request.time + duration.value(10, 'm');
 
+      // The joiner may atomically accept a pending code and attach the couple.
       allow update: if signedIn()
         && request.auth.uid != resource.data.creatorUid
         && resource.data.status == 'pending'
@@ -157,6 +160,8 @@ service cloud.firestore {
         );
       allow list: if false;
 
+      // The joiner creates the couple in the same transaction that accepts
+      // the pairing code. getAfter() validates the atomic pairing state.
       allow create: if signedIn()
         && request.auth.uid == request.resource.data.memberB
         && request.resource.data.keys().hasOnly([
