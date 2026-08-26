@@ -53,8 +53,32 @@ jobs:
           path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
           PY
 
+      - name: Repair Phase 2 source compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/formatth/kitaldr/MainActivity.kt')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('import coil3.compose.AsyncImage\n', 'import coil.compose.AsyncImage\n')
+          s = s.replace('import coil3.request.ImageRequest\n', '')
+          s = s.replace('model = ImageRequest.Builder(LocalContext.current).data(photoUrl).crossfade(true).build(),', 'model = photoUrl,')
+          s = s.replace('OutlinedButton(disconnect, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))', 'OutlinedButton(onClick = disconnect, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))')
+          p.write_text(s, encoding='utf-8')
+          PY
+          rm -f app/src/main/java/coil3/compose/AsyncImageCompat.kt
+          rm -f app/src/main/java/coil3/request/ImageRequestCompat.kt
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
+
+      - name: Commit repaired Phase 2 source
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/formatth/kitaldr/MainActivity.kt app/src/main/java/coil3/compose/AsyncImageCompat.kt app/src/main/java/coil3/request/ImageRequestCompat.kt .github/workflows/fix-build-phase2.yml
+          git commit -m "fix(profile): use Coil 2 directly and repair button callback" || true
+          git push origin HEAD:main || true
 
       - name: Prepare direct APK
         run: cp app/build/outputs/apk/debug/app-debug.apk KitaLDR-debug.apk
