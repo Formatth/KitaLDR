@@ -17,14 +17,14 @@ private fun localProperty(name: String): String = localProperties.getProperty(na
 
 android {
     namespace = "com.formatth.kitaldr"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.formatth.kitaldr"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 7
-        versionName = "0.6.0"
+        targetSdk = 36
+        versionCode = 8
+        versionName = "0.6.1"
 
         buildConfigField("String", "SUPABASE_URL", "\"${localProperty("SUPABASE_URL").ifBlank { "https://nlimyvxklciacmaohhfj.supabase.co" }}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${localProperty("SUPABASE_PUBLISHABLE_KEY").ifBlank { "sb_publishable_hiZj_6gHSU_i9lBTMju9cA_4AGS47MN" }}\"")
