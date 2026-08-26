@@ -415,7 +415,7 @@ private fun Home(
             when (tab) {
                 0 -> HomeDashboard(self, pair?.selfPhotoUrl.orEmpty(), partner, pair?.partnerPhotoUrl.orEmpty(), actionBusy, message, action)
                 1 -> LoveScreen(partner, pair?.partnerPhotoUrl.orEmpty(), actionBusy, action)
-                2 -> CalendarScreen()
+                2 -> CalendarScreen(pair?.coupleId.orEmpty())
                 3 -> MoreScreen(pair, self, partner, edit, { edit = it.take(30) }, { saveName(edit) }, photoBusy, pickPhoto, disconnect)
             }
             if (incoming?.type == RemoteActionService.ACTION_POKE) PokeOverlay(partner, pair?.partnerPhotoUrl.orEmpty(), dismissIncoming)
@@ -482,11 +482,8 @@ private fun LoveScreen(partner: String, partnerPhoto: String, busy: Boolean, act
 }
 
 @Composable
-private fun CalendarScreen() {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Spacer(Modifier.height(8.dp)); Text("Calendar", fontSize = 31.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.height(5.dp)); Text("Keep the moments you don't want to forget.", color = Muted); Spacer(Modifier.height(24.dp))
-        SurfacePanel(Modifier.fillMaxWidth()) { Column(Modifier.padding(22.dp)) { Text("Your shared calendar", fontSize = 19.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(7.dp)); Text("Dates, anniversaries and little plans will live here.", color = Muted, lineHeight = 20.sp); Spacer(Modifier.height(18.dp)); Text("Coming soon", color = Rose, fontWeight = FontWeight.Bold, fontSize = 12.sp) } }
-    }
+private fun CalendarScreen(coupleId: String) {
+    RelationshipCalendarScreen(coupleId)
 }
 
 @Composable

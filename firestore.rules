@@ -32,9 +32,6 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // Own profile, or the profile of the other member of the same active couple.
-      // This is intentionally get-only: the app uses a document snapshot listener,
-      // so realtime profile updates do not require collection/list permission.
       allow get: if signedIn() && (
         request.auth.uid == uid
         || (
@@ -49,8 +46,6 @@ service cloud.firestore {
 
       allow list: if false;
 
-      // Profile photo fields are optional. Existing users created before Phase 2
-      // remain valid because absent optional fields are not required here.
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly([
@@ -61,7 +56,6 @@ service cloud.firestore {
         && (!('photoPath' in request.resource.data) || request.resource.data.photoPath == null || request.resource.data.photoPath is string);
 
       allow update: if signedIn() && (
-        // The owner may update their display name/profile photo and pair state.
         (
           request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -82,7 +76,6 @@ service cloud.firestore {
           )
         )
         ||
-        // A partner may only clear the other user's pairId as part of disconnect.
         (
           request.auth.uid != uid
           && resource.data.pairId is string
@@ -138,7 +131,6 @@ service cloud.firestore {
         && request.resource.data.expiresAt > request.time
         && request.resource.data.expiresAt <= request.time + duration.value(10, 'm');
 
-      // The joiner may atomically accept a pending code and attach the couple.
       allow update: if signedIn()
         && request.auth.uid != resource.data.creatorUid
         && resource.data.status == 'pending'
@@ -160,18 +152,17 @@ service cloud.firestore {
         );
       allow list: if false;
 
-      // The joiner creates the couple in the same transaction that accepts
-      // the pairing code. getAfter() validates the atomic pairing state.
       allow create: if signedIn()
         && request.auth.uid == request.resource.data.memberB
         && request.resource.data.keys().hasOnly([
-          'memberA', 'memberB', 'pairingCode', 'status', 'createdAt'
+          'memberA', 'memberB', 'pairingCode', 'status', 'createdAt', 'relationshipStartDate'
         ])
         && request.resource.data.memberA is string
         && request.resource.data.memberB is string
         && request.resource.data.memberA != request.resource.data.memberB
         && request.resource.data.pairingCode is string
         && request.resource.data.status == 'active'
+        && (!('relationshipStartDate' in request.resource.data) || request.resource.data.relationshipStartDate == null || request.resource.data.relationshipStartDate is string)
         && getAfter(/databases/$(database)/documents/pairingCodes/$(request.resource.data.pairingCode)).data.status == 'accepted'
         && getAfter(/databases/$(database)/documents/pairingCodes/$(request.resource.data.pairingCode)).data.acceptedBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/pairingCodes/$(request.resource.data.pairingCode)).data.coupleId == coupleId
@@ -179,6 +170,17 @@ service cloud.firestore {
 
       allow update: if signedIn()
         && (
+          (
+            resource.data.memberA == request.auth.uid
+            || resource.data.memberB == request.auth.uid
+          )
+          && resource.data.status == 'active'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['relationshipStartDate'])
+          && request.resource.data.relationshipStartDate is string
+          && request.resource.data.relationshipStartDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        )
+        ||
+        (
           resource.data.memberA == request.auth.uid
           || resource.data.memberB == request.auth.uid
         )
@@ -187,6 +189,26 @@ service cloud.firestore {
         && request.resource.data.status == 'disconnected';
 
       allow delete: if false;
+
+      match /memories/{memoryId} {
+        allow get, list: if isActiveCoupleMember(coupleId);
+
+        allow create: if isActiveCoupleMember(coupleId)
+          && request.resource.data.keys().hasOnly([
+            'title', 'note', 'date', 'createdAt', 'createdBy'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 80
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 300
+          && request.resource.data.date is string
+          && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow delete: if isActiveCoupleMember(coupleId);
+        allow update: if false;
+      }
 
       match /actions/{actionId} {
         allow list: if signedIn()
