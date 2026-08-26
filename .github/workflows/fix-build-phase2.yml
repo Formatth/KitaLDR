@@ -16,17 +16,36 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Repair Coil 2 compatibility and button call
+      - name: Repair Phase 2 source compatibility
         shell: bash
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
+
           p = Path('app/src/main/java/com/formatth/kitaldr/MainActivity.kt')
           s = p.read_text(encoding='utf-8')
+
+          # Normalize Coil 3 remnants back to the project's Coil 2 dependency.
           s = s.replace('import coil3.compose.AsyncImage\n', 'import coil.compose.AsyncImage\n')
           s = s.replace('import coil3.request.ImageRequest\n', '')
-          s = s.replace('model = ImageRequest.Builder(LocalContext.current).data(photoUrl).crossfade(true).build(),', 'model = photoUrl,')
-          s = s.replace('OutlinedButton(disconnect, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))', 'OutlinedButton(onClick = disconnect, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))')
+          s = re.sub(
+              r'model\s*=\s*ImageRequest\.Builder\(LocalContext\.current\)\.data\(photoUrl\)\.crossfade\(true\)\.build\(\),',
+              'model = photoUrl,',
+              s,
+          )
+
+          # Material 3 requires the callback to be passed as onClick.
+          s = re.sub(r'OutlinedButton\(\s*disconnect\s*,', 'OutlinedButton(onClick = disconnect,', s)
+
+          # Fail loudly if a known Phase 2 compile issue is still present.
+          if 'OutlinedButton(disconnect' in s:
+              raise SystemExit('Phase 2 repair failed: OutlinedButton(disconnect, ...) remains')
+          if 'ImageRequest.Builder(LocalContext.current)' in s:
+              raise SystemExit('Phase 2 repair failed: Coil 3 ImageRequest.Builder remains')
+          if 'import coil3.' in s:
+              raise SystemExit('Phase 2 repair failed: coil3 import remains')
+
           p.write_text(s, encoding='utf-8')
           PY
           rm -f app/src/main/java/coil3/compose/AsyncImageCompat.kt
@@ -40,5 +59,3 @@ jobs:
           git add app/src/main/java/com/formatth/kitaldr/MainActivity.kt app/src/main/java/coil3/compose/AsyncImageCompat.kt app/src/main/java/coil3/request/ImageRequestCompat.kt .github/workflows/fix-build-phase2.yml
           git commit -m "fix(profile): use Coil 2 directly and repair button callback" || exit 0
           git push origin HEAD:main
-
-# repair trigger
