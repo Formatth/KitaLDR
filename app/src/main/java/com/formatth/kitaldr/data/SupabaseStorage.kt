@@ -3,8 +3,12 @@ package com.formatth.kitaldr.data
 import com.formatth.kitaldr.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.storage.BucketApi
 import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.storage.UploadOptionBuilder
 import io.github.jan.supabase.storage.storage
+import kotlinx.coroutines.runBlocking
+import java.io.File
 
 /** Minimal Supabase Storage client used only for profile images. */
 object SupabaseStorage {
@@ -27,12 +31,42 @@ object SupabaseStorage {
 }
 
 /**
- * Small facade that keeps the repository API stable while exposing the
- * Storage plugin through the Supabase Kotlin extension property.
+ * Small synchronous facade for the repository's existing background-thread API.
+ * Supabase Storage's upload/delete operations are suspend functions in v3.5.0,
+ * so the facade bridges them with runBlocking while the repository remains on
+ * its existing worker thread.
  */
 class SupabaseStorageClient internal constructor(
     private val supabaseClient: SupabaseClient,
 ) {
-    val storage: Storage
-        get() = supabaseClient.storage
+    val storage: SupabaseStorageApi
+        get() = SupabaseStorageApi(supabaseClient.storage)
+}
+
+class SupabaseStorageApi internal constructor(
+    private val storage: Storage,
+) {
+    fun from(bucketId: String): SupabaseStorageBucket = SupabaseStorageBucket(storage.from(bucketId))
+}
+
+class SupabaseStorageBucket internal constructor(
+    private val bucket: BucketApi,
+) {
+    fun upload(
+        path: String,
+        file: File,
+        options: UploadOptionBuilder.() -> Unit = {},
+    ) {
+        runBlocking {
+            bucket.upload(path, file.readBytes(), options)
+        }
+    }
+
+    fun publicUrl(path: String): String = bucket.publicUrl(path)
+
+    fun delete(path: String) {
+        runBlocking {
+            bucket.delete(path)
+        }
+    }
 }
