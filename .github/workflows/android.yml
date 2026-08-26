@@ -56,13 +56,27 @@ jobs:
       - name: Repair Phase 2 source compatibility
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
+
           p = Path('app/src/main/java/com/formatth/kitaldr/MainActivity.kt')
           s = p.read_text(encoding='utf-8')
           s = s.replace('import coil3.compose.AsyncImage\n', 'import coil.compose.AsyncImage\n')
           s = s.replace('import coil3.request.ImageRequest\n', '')
-          s = s.replace('model = ImageRequest.Builder(LocalContext.current).data(photoUrl).crossfade(true).build(),', 'model = photoUrl,')
-          s = s.replace('OutlinedButton(disconnect, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))', 'OutlinedButton(onClick = disconnect, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp))')
+          s = re.sub(
+              r'model\s*=\s*ImageRequest\.Builder\(LocalContext\.current\)\.data\(photoUrl\)\.crossfade\(true\)\.build\(\),',
+              'model = photoUrl,',
+              s,
+          )
+          s = re.sub(r'OutlinedButton\(\s*disconnect\s*,', 'OutlinedButton(onClick = disconnect,', s)
+
+          if 'OutlinedButton(disconnect' in s:
+              raise SystemExit('Phase 2 repair failed: OutlinedButton(disconnect, ...) remains')
+          if 'ImageRequest.Builder(LocalContext.current)' in s:
+              raise SystemExit('Phase 2 repair failed: Coil 3 ImageRequest.Builder remains')
+          if 'import coil3.' in s:
+              raise SystemExit('Phase 2 repair failed: coil3 import remains')
+
           p.write_text(s, encoding='utf-8')
           PY
           rm -f app/src/main/java/coil3/compose/AsyncImageCompat.kt
